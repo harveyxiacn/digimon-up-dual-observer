@@ -1,0 +1,28 @@
+monitor:
+  poll_interval_seconds: 2.0
+  ocr_interval_seconds: 6.0
+  dialog_ocr_interval_seconds: 8.0
+  stable_frames_before_click: 2
+  action_cooldown_seconds: 2.5
+  automation_enabled: true
+  save_action_screenshots: true
+
+notifications:
+  special_task_cooldown_seconds: 21600
+  ticket_cooldown_seconds: 900
+
+ocr:
+  language: "chi_tra+eng"
+  tesseract_cmd: "C:/Program Files/Tesseract-OCR/tesseract.exe"
+
+adb:
+  executable: "adb"
+  command_timeout_seconds: 12
+  connect_addresses: []
+  device_aliases: {}
+
+vision:
+  task_complete_min_score: 0.035
+  task_complete_band_score: 0.08
+  equipment_red_pixel_ratio: 0.00020
+  equipment_green_pixel_ratio: 0.00045

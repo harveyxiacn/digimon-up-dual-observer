@@ -1,0 +1,11 @@
+.env
+config.local.yaml
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+build/
+dist/
+captures/
+logs/
+*.spec

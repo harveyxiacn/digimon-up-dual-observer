@@ -1,0 +1,8 @@
+# Copy this file to config.local.yaml for machine-specific ADB settings.
+# config.local.yaml is excluded from Git.
+adb:
+  connect_addresses:
+    - "127.0.0.1:YOUR_BLUESTACKS_ADB_PORT"
+  device_aliases:
+    "127.0.0.1:YOUR_BLUESTACKS_ADB_PORT": "BlueStacks"
+    "emulator-5554": "LDPlayer"
