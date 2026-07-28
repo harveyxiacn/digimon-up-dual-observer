@@ -41,6 +41,23 @@ class EventBus(QObject):
     discord_test = Signal(bool, str)
 
 
+def normalized_selected_serials(
+    devices: list[AdbDevice],
+    selected: set[str],
+    *,
+    allow_multiple: bool,
+) -> list[str]:
+    """Keep valid selections in ADB order and choose one safe default."""
+    online = [device for device in devices if device.state == "device"]
+    ordered = [device.serial for device in online if device.serial in selected]
+    if not ordered:
+        ordered = [
+            device.serial for device in online if device.is_safe_default
+        ][:1]
+    limit = 2 if allow_multiple else 1
+    return ordered[:limit]
+
+
 class PreviewCard(QFrame):
     def __init__(self, index: int):
         super().__init__()
@@ -124,8 +141,9 @@ class MainWindow(QMainWindow):
             status_callback=self.bus.status.emit,
         )
         self.devices: list[AdbDevice] = []
+        self._updating_device_checks = False
         self.preview_cards = [PreviewCard(1), PreviewCard(2)]
-        self.setWindowTitle("DIGIMON UP // DUAL OBSERVER")
+        self.setWindowTitle("DIGIMON UP // OBSERVER")
         self.resize(1180, 820)
         self.setMinimumSize(980, 700)
         self._build_ui()
@@ -141,7 +159,7 @@ class MainWindow(QMainWindow):
 
         header = QHBoxLayout()
         title_column = QVBoxLayout()
-        title = QLabel("DIGIMON UP // DUAL OBSERVER")
+        title = QLabel("DIGIMON UP // OBSERVER")
         title.setObjectName("Title")
         subtitle = QLabel(
             "DIGITAL WORLD LINK  •  TASK WATCH  •  EQUIPMENT PROTOCOL"
@@ -175,6 +193,11 @@ class MainWindow(QMainWindow):
 
         devices_group = QGroupBox("01 // 模拟器链路")
         devices_layout = QVBoxLayout(devices_group)
+        self.multi_device_mode = QCheckBox(
+            "多模拟器模式（同时显示 / 监控最多 2 台）"
+        )
+        self.multi_device_mode.setChecked(False)
+        devices_layout.addWidget(self.multi_device_mode)
         self.device_list = QListWidget()
         self.device_list.setMinimumHeight(140)
         devices_layout.addWidget(self.device_list)
@@ -239,11 +262,12 @@ class MainWindow(QMainWindow):
         layout.setContentsMargins(8, 0, 0, 0)
         layout.setSpacing(10)
 
-        preview_group = QGroupBox("LIVE // 双通道画面")
-        preview_layout = QHBoxLayout(preview_group)
+        self.preview_group = QGroupBox("LIVE // 单通道画面")
+        preview_layout = QHBoxLayout(self.preview_group)
         for card in self.preview_cards:
             preview_layout.addWidget(card, 1)
-        layout.addWidget(preview_group, 3)
+        self.preview_cards[1].setVisible(False)
+        layout.addWidget(self.preview_group, 3)
 
         log_group = QGroupBox("EVENT STREAM // 事件日志")
         log_layout = QVBoxLayout(log_group)
@@ -257,6 +281,8 @@ class MainWindow(QMainWindow):
 
     def _connect_signals(self) -> None:
         self.refresh_button.clicked.connect(self.refresh_devices)
+        self.multi_device_mode.toggled.connect(self.on_monitor_mode_changed)
+        self.device_list.itemChanged.connect(self.on_device_check_changed)
         self.connect_button.clicked.connect(self.connect_address)
         self.address_edit.returnPressed.connect(self.connect_address)
         self.test_button.clicked.connect(self.test_discord)
@@ -289,6 +315,12 @@ class MainWindow(QMainWindow):
         except Exception as exc:
             QMessageBox.warning(self, "ADB", str(exc))
             return
+        normalized = normalized_selected_serials(
+            self.devices,
+            selected,
+            allow_multiple=self.multi_device_mode.isChecked(),
+        )
+        self._updating_device_checks = True
         self.device_list.clear()
         for device in self.devices:
             alias = self.config.adb.device_aliases.get(device.serial, "")
@@ -299,15 +331,13 @@ class MainWindow(QMainWindow):
             item = QListWidgetItem(display_name + suffix)
             item.setData(Qt.UserRole, device.serial)
             item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
-            checked = (
-                device.serial in selected
-                or (not selected and device.is_safe_default)
-            )
+            checked = device.serial in normalized
             if device.state != "device":
                 checked = False
                 item.setText(item.text() + f"  [{device.state}]")
             item.setCheckState(Qt.Checked if checked else Qt.Unchecked)
             self.device_list.addItem(item)
+        self._updating_device_checks = False
         running_emulators = detect_running_emulators()
         connected_emulators = [
             device
@@ -350,6 +380,61 @@ class MainWindow(QMainWindow):
             )
         self.append_log("info", f"[SYSTEM] ADB 发现 {len(self.devices)} 个设备")
 
+    @Slot(bool)
+    def on_monitor_mode_changed(self, allow_multiple: bool) -> None:
+        selected = {
+            self.device_list.item(index).data(Qt.UserRole)
+            for index in range(self.device_list.count())
+            if self.device_list.item(index).checkState() == Qt.Checked
+        }
+        normalized = set(
+            normalized_selected_serials(
+                self.devices,
+                selected,
+                allow_multiple=allow_multiple,
+            )
+        )
+        self._updating_device_checks = True
+        for index in range(self.device_list.count()):
+            item = self.device_list.item(index)
+            item.setCheckState(
+                Qt.Checked
+                if item.data(Qt.UserRole) in normalized
+                else Qt.Unchecked
+            )
+        self._updating_device_checks = False
+        self.preview_cards[1].setVisible(allow_multiple)
+        self.preview_group.setTitle(
+            "LIVE // 多通道画面" if allow_multiple else "LIVE // 单通道画面"
+        )
+        mode = "MULTI // 最多 2 台" if allow_multiple else "SINGLE // 1 台"
+        self.append_log("info", f"[SYSTEM] 监控模式切换为 {mode}")
+
+    @Slot(QListWidgetItem)
+    def on_device_check_changed(self, changed_item: QListWidgetItem) -> None:
+        if self._updating_device_checks or changed_item.checkState() != Qt.Checked:
+            return
+        if self.multi_device_mode.isChecked():
+            checked_count = sum(
+                self.device_list.item(index).checkState() == Qt.Checked
+                for index in range(self.device_list.count())
+            )
+            if checked_count > 2:
+                self._updating_device_checks = True
+                changed_item.setCheckState(Qt.Unchecked)
+                self._updating_device_checks = False
+                self.append_log(
+                    "warning",
+                    "[SYSTEM] 多模拟器模式最多选择 2 台",
+                )
+            return
+        self._updating_device_checks = True
+        for index in range(self.device_list.count()):
+            item = self.device_list.item(index)
+            if item is not changed_item:
+                item.setCheckState(Qt.Unchecked)
+        self._updating_device_checks = False
+
     @Slot()
     def connect_address(self) -> None:
         try:
@@ -377,6 +462,8 @@ class MainWindow(QMainWindow):
         if not devices:
             QMessageBox.information(self, "请选择模拟器", "至少勾选一个在线模拟器。")
             return
+        if not self.multi_device_mode.isChecked() and len(devices) > 1:
+            devices = devices[:1]
         if len(devices) > 2:
             QMessageBox.information(
                 self,
@@ -399,6 +486,7 @@ class MainWindow(QMainWindow):
         self.start_button.setEnabled(False)
         self.stop_button.setEnabled(True)
         self.device_list.setEnabled(False)
+        self.multi_device_mode.setEnabled(False)
         self.refresh_button.setEnabled(False)
         self.connect_button.setEnabled(False)
         mode = "AUTO" if self.auto_click.isChecked() else "OBSERVE"
@@ -413,6 +501,7 @@ class MainWindow(QMainWindow):
         self.start_button.setEnabled(True)
         self.stop_button.setEnabled(False)
         self.device_list.setEnabled(True)
+        self.multi_device_mode.setEnabled(True)
         self.refresh_button.setEnabled(True)
         self.connect_button.setEnabled(True)
         self.append_log("info", "[SYSTEM] 所有监控链路已停止")
@@ -428,7 +517,7 @@ class MainWindow(QMainWindow):
         def send() -> None:
             try:
                 self.notifier.send(
-                    "🟦 DIGIMON UP // DUAL OBSERVER 测试信号已连接。"
+                    "🟦 DIGIMON UP // OBSERVER 测试信号已连接。"
                 )
                 self.bus.discord_test.emit(True, "Discord 测试信号发送成功")
             except Exception as exc:
