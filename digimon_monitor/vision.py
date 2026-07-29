@@ -228,29 +228,81 @@ def normalize_ocr_text(text: str) -> str:
 def classify_special_task(text: str) -> str | None:
     normalized = normalize_ocr_text(text)
     support_type = any(
-        term in normalized for term in ("支援型", "支持型", "支援形")
+        term in normalized
+        for term in (
+            "支援型",
+            "支持型",
+            "支援形",
+            "supporttype",
+            "supportdigimon",
+            "サポート型",
+            "支援タイプ",
+        )
     )
     digimon_or_gacha = any(
         term in normalized
-        for term in ("數碼", "数码", "寶貝", "宝贝", "轉蛋", "转蛋")
+        for term in (
+            "數碼",
+            "数码",
+            "寶貝",
+            "宝贝",
+            "轉蛋",
+            "转蛋",
+            "digimon",
+            "gacha",
+            "summon",
+            "draw",
+            "デジモン",
+            "ガチャ",
+            "ガシャ",
+            "召喚",
+        )
     )
     if support_type and digimon_or_gacha:
-        return "抽取支援型數碼寶貝"
+        return "support_digimon"
 
-    has_skill = any(term in normalized for term in ("技能", "技熊"))
-    has_card = any(term in normalized for term in ("卡片", "卡牌", "技能卡", "咭"))
+    has_skill = any(
+        term in normalized for term in ("技能", "技熊", "skill", "スキル")
+    )
+    has_card = any(
+        term in normalized
+        for term in ("卡片", "卡牌", "技能卡", "咭", "card", "カード")
+    )
     if has_skill and has_card:
-        return "抽取技能卡片"
+        return "skill_card"
     return None
 
 
 def is_ticket_insufficient(text: str) -> bool:
     normalized = normalize_ocr_text(text)
     insufficient = any(
-        term in normalized for term in ("不足", "不夠", "不够", "缺少")
+        term in normalized
+        for term in (
+            "不足",
+            "不夠",
+            "不够",
+            "缺少",
+            "notenough",
+            "insufficient",
+            "shortage",
+            "足りない",
+        )
     )
     projection = any(
-        term in normalized for term in ("全像", "全息", "投影")
+        term in normalized
+        for term in (
+            "全像",
+            "全息",
+            "投影",
+            "hologram",
+            "holographic",
+            "projection",
+            "ホログラム",
+        )
     )
-    ticket = any(term in normalized for term in ("券", "票"))
-    return insufficient and projection and (ticket or "投影" in normalized)
+    ticket = any(
+        term in normalized for term in ("券", "票", "ticket", "チケット")
+    )
+    return insufficient and projection and (
+        ticket or "投影" in normalized or "projection" in normalized
+    )

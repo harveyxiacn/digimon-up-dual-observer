@@ -7,6 +7,8 @@ import subprocess
 import cv2
 import numpy as np
 
+from .i18n import Translator
+
 
 class AdbError(RuntimeError):
     pass
@@ -43,10 +45,16 @@ class AdbDevice:
 
 
 class AdbClient:
-    def __init__(self, executable: str = "adb", timeout_seconds: float = 12):
+    def __init__(
+        self,
+        executable: str = "adb",
+        timeout_seconds: float = 12,
+        translator: Translator | None = None,
+    ):
         resolved = shutil.which(executable)
         self.executable = resolved or executable
         self.timeout_seconds = timeout_seconds
+        self.tr = translator or Translator()
 
     def _run(
         self,
@@ -65,11 +73,11 @@ class AdbClient:
                 creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
             )
         except FileNotFoundError as exc:
-            raise AdbError(
-                "找不到 adb。请安装 Android platform-tools，或在 config.yaml 设置 adb.executable。"
-            ) from exc
+            raise AdbError(self.tr("error.adb_missing")) from exc
         except subprocess.TimeoutExpired as exc:
-            raise AdbError(f"ADB 命令超时：{' '.join(args)}") from exc
+            raise AdbError(
+                self.tr("error.adb_timeout", command=" ".join(args))
+            ) from exc
 
     def list_devices(self) -> list[AdbDevice]:
         result = self._run(["devices", "-l"])
@@ -102,11 +110,13 @@ class AdbClient:
     def connect(self, address: str) -> str:
         address = address.strip()
         if not address or ":" not in address:
-            raise AdbError("ADB 地址格式应为 127.0.0.1:5555")
+            raise AdbError(self.tr("error.adb_address"))
         result = self._run(["connect", address])
         message = (result.stdout or result.stderr).strip()
         if result.returncode != 0:
-            raise AdbError(message or f"无法连接 {address}")
+            raise AdbError(
+                message or self.tr("error.adb_connect", address=address)
+            )
         return message
 
     def screenshot(self, serial: str) -> np.ndarray:
@@ -117,16 +127,20 @@ class AdbClient:
         )
         if result.returncode != 0:
             error = (result.stderr or b"").decode("utf-8", errors="replace").strip()
-            raise AdbError(error or f"{serial} 截图失败")
+            raise AdbError(
+                error or self.tr("error.adb_screenshot", serial=serial)
+            )
         array = np.frombuffer(result.stdout, dtype=np.uint8)
         frame = cv2.imdecode(array, cv2.IMREAD_COLOR)
         if frame is None:
-            raise AdbError(f"{serial} 返回了无效截图")
+            raise AdbError(
+                self.tr("error.adb_invalid_screenshot", serial=serial)
+            )
         return frame
 
     def tap(self, serial: str, x: int, y: int) -> None:
         if x < 0 or y < 0:
-            raise AdbError("拒绝负坐标点击")
+            raise AdbError(self.tr("error.adb_negative_tap"))
         result = self._run(
             ["-s", serial, "shell", "input", "tap", str(x), str(y)]
         )

@@ -12,7 +12,7 @@ notifications:
   ticket_cooldown_seconds: 900
 
 ocr:
-  language: "chi_tra+eng"
+  language: "chi_tra+chi_sim+jpn+eng"
   tesseract_cmd: "C:/Program Files/Tesseract-OCR/tesseract.exe"
 
 adb:
@@ -26,3 +26,6 @@ vision:
   task_complete_band_score: 0.08
   equipment_red_pixel_ratio: 0.00020
   equipment_green_pixel_ratio: 0.00045
+
+ui:
+  language: "zh_CN"

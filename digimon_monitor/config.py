@@ -30,7 +30,7 @@ class NotificationSettings:
 
 @dataclass(slots=True)
 class OcrSettings:
-    language: str = "chi_tra+eng"
+    language: str = "chi_tra+chi_sim+jpn+eng"
     tesseract_cmd: str = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
 
 
@@ -51,12 +51,18 @@ class VisionSettings:
 
 
 @dataclass(slots=True)
+class UiSettings:
+    language: str = "zh_CN"
+
+
+@dataclass(slots=True)
 class AppConfig:
     monitor: MonitorSettings = field(default_factory=MonitorSettings)
     notifications: NotificationSettings = field(default_factory=NotificationSettings)
     ocr: OcrSettings = field(default_factory=OcrSettings)
     adb: AdbSettings = field(default_factory=AdbSettings)
     vision: VisionSettings = field(default_factory=VisionSettings)
+    ui: UiSettings = field(default_factory=UiSettings)
     webhook_url: str = ""
     project_dir: Path = PROJECT_DIR
 
@@ -103,20 +109,52 @@ def load_config(project_dir: Path = PROJECT_DIR) -> AppConfig:
         "DIGIMON_DISCORD_WEBHOOK_URL",
         dotenv.get("DIGIMON_DISCORD_WEBHOOK_URL", ""),
     )
+    ui = UiSettings(**_section(data, "ui"))
+    ui.language = os.environ.get(
+        "DIGIMON_UI_LANGUAGE",
+        dotenv.get("DIGIMON_UI_LANGUAGE", ui.language),
+    )
     return AppConfig(
         monitor=MonitorSettings(**_section(data, "monitor")),
         notifications=NotificationSettings(**_section(data, "notifications")),
         ocr=OcrSettings(**_section(data, "ocr")),
         adb=AdbSettings(**_section(data, "adb")),
         vision=VisionSettings(**_section(data, "vision")),
+        ui=ui,
         webhook_url=webhook,
         project_dir=project_dir,
     )
 
 
-def save_webhook(project_dir: Path, webhook_url: str) -> None:
+def _save_dotenv_value(project_dir: Path, key: str, value: str) -> None:
     path = project_dir / ".env"
-    path.write_text(
-        f"DIGIMON_DISCORD_WEBHOOK_URL={webhook_url.strip()}\n",
-        encoding="utf-8",
+    lines = (
+        path.read_text(encoding="utf-8").splitlines()
+        if path.exists()
+        else []
     )
+    replacement = f"{key}={value.strip()}"
+    replaced = False
+    updated: list[str] = []
+    for line in lines:
+        if line.strip().startswith(f"{key}="):
+            if not replaced:
+                updated.append(replacement)
+                replaced = True
+        else:
+            updated.append(line)
+    if not replaced:
+        updated.append(replacement)
+    path.write_text("\n".join(updated).rstrip() + "\n", encoding="utf-8")
+
+
+def save_webhook(project_dir: Path, webhook_url: str) -> None:
+    _save_dotenv_value(
+        project_dir,
+        "DIGIMON_DISCORD_WEBHOOK_URL",
+        webhook_url,
+    )
+
+
+def save_ui_language(project_dir: Path, language: str) -> None:
+    _save_dotenv_value(project_dir, "DIGIMON_UI_LANGUAGE", language)

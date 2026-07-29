@@ -16,6 +16,23 @@ class OcrEngine:
         command = Path(self.settings.tesseract_cmd)
         if command.exists():
             pytesseract.pytesseract.tesseract_cmd = str(command)
+        requested = tuple(
+            language.strip()
+            for language in self.settings.language.split("+")
+            if language.strip()
+        )
+        try:
+            installed = set(pytesseract.get_languages(config=""))
+        except Exception:
+            installed = set(requested)
+        active = tuple(language for language in requested if language in installed)
+        if not active and "eng" in installed:
+            active = ("eng",)
+        self.active_languages = active or requested or ("eng",)
+        self.missing_languages = tuple(
+            language for language in requested if language not in installed
+        )
+        self.language = "+".join(self.active_languages)
 
     @staticmethod
     def _crop(
@@ -53,7 +70,7 @@ class OcrEngine:
         roi = self._upscale(roi, 3.0)
         original_text = pytesseract.image_to_string(
             roi,
-            lang=self.settings.language,
+            lang=self.language,
             config="--psm 6",
         ).strip()
         gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
@@ -65,7 +82,7 @@ class OcrEngine:
         )[1]
         binary_text = pytesseract.image_to_string(
             binary,
-            lang=self.settings.language,
+            lang=self.language,
             config="--psm 6",
         ).strip()
         return "\n".join(text for text in (original_text, binary_text) if text)
@@ -75,6 +92,6 @@ class OcrEngine:
         roi = self._upscale(roi, 1.7)
         return pytesseract.image_to_string(
             roi,
-            lang=self.settings.language,
+            lang=self.language,
             config="--psm 11",
         ).strip()
