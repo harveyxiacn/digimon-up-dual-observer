@@ -26,11 +26,19 @@ def _equipment_frame(*, worse: bool) -> np.ndarray:
 
 def test_special_support_task_tolerates_ocr_variation() -> None:
     text = "175. 抽取 0/15次\n支援型數碼賣貝轉蛋"
-    assert classify_special_task(text) == "抽取支援型數碼寶貝"
+    assert classify_special_task(text) == "support_digimon"
 
 
 def test_special_skill_card_task() -> None:
-    assert classify_special_task("抽取 3/10 次 技能卡片") == "抽取技能卡片"
+    assert classify_special_task("抽取 3/10 次 技能卡片") == "skill_card"
+
+
+def test_international_special_task_variants() -> None:
+    assert (
+        classify_special_task("Draw 0/15 support-type Digimon")
+        == "support_digimon"
+    )
+    assert classify_special_task("スキルカードを3回引く") == "skill_card"
 
 
 def test_non_special_task() -> None:
@@ -41,6 +49,8 @@ def test_ticket_insufficient_variants() -> None:
     assert is_ticket_insufficient("全像投影券不足")
     assert is_ticket_insufficient("全息投影票不夠")
     assert not is_ticket_insufficient("啟動 10/10 次全像投影裝置")
+    assert is_ticket_insufficient("Not enough hologram tickets")
+    assert is_ticket_insufficient("ホログラムチケットが足りない")
 
 
 def test_better_equipment_popup() -> None:
@@ -68,10 +78,7 @@ def test_detects_popular_emulator_processes() -> None:
     detected = detect_running_emulators(
         ["HD-Player.exe", "dnplayer.exe", "unrelated.exe"]
     )
-    assert [item.name for item in detected] == [
-        "BlueStacks",
-        "雷电模拟器 / LDPlayer",
-    ]
+    assert [item.key for item in detected] == ["bluestacks", "ldplayer"]
 
 
 def test_support_process_alone_does_not_claim_emulator_running() -> None:

@@ -68,22 +68,51 @@ class DigitalBackdrop(QWidget):
         super().paintEvent(event)
 
 
-def install_pixel_font(app: QApplication, project_dir: Path) -> str:
-    font_path = (
-        project_dir
-        / "assets"
-        / "fonts"
-        / "fusion-pixel-12px-proportional-zh_hant.ttf"
-    )
-    family = "Microsoft JhengHei UI"
-    if font_path.exists():
+FONT_FILES = {
+    "zh_CN": "fusion-pixel-12px-proportional-zh_hans.ttf",
+    "zh_TW": "fusion-pixel-12px-proportional-zh_hant.ttf",
+    "en": "fusion-pixel-12px-proportional-latin.ttf",
+    "ja": "fusion-pixel-12px-proportional-ja.ttf",
+}
+
+SYSTEM_FONT_FALLBACKS = {
+    "zh_CN": "Microsoft YaHei UI",
+    "zh_TW": "Microsoft JhengHei UI",
+    "en": "Segoe UI",
+    "ja": "Yu Gothic UI",
+}
+
+
+def install_pixel_fonts(
+    app: QApplication,
+    project_dir: Path,
+) -> dict[str, str]:
+    font_dir = project_dir / "assets" / "fonts"
+    installed: dict[str, str] = {}
+    for language, filename in FONT_FILES.items():
+        font_path = font_dir / filename
+        if not font_path.exists():
+            continue
         font_id = QFontDatabase.addApplicationFont(str(font_path))
         families = QFontDatabase.applicationFontFamilies(font_id)
         if families:
-            family = families[0]
+            installed[language] = families[0]
+    return installed
+
+
+def apply_pixel_font(
+    app: QApplication,
+    font_families: dict[str, str],
+    language: str,
+) -> str:
+    family = font_families.get(
+        language,
+        SYSTEM_FONT_FALLBACKS.get(language, "Segoe UI"),
+    )
     font = QFont(family, 11)
     font.setHintingPreference(QFont.PreferFullHinting)
     app.setFont(font)
+    app.setStyleSheet(stylesheet(family))
     return family
 
 
@@ -128,14 +157,19 @@ def stylesheet(font_family: str) -> str:
         color: {c["yellow"]};
         background: {c["navy"]};
     }}
-    QListWidget, QPlainTextEdit, QLineEdit {{
+    QListWidget, QPlainTextEdit, QLineEdit, QComboBox {{
         background: rgba(1, 12, 29, 235);
         border: 2px solid {c["panel_hi"]};
         selection-background-color: {c["blue"]};
         padding: 7px;
     }}
-    QLineEdit:focus, QListWidget:focus, QPlainTextEdit:focus {{
+    QLineEdit:focus, QListWidget:focus, QPlainTextEdit:focus, QComboBox:focus {{
         border-color: {c["cyan"]};
+    }}
+    QComboBox QAbstractItemView {{
+        background: {c["navy"]};
+        border: 2px solid {c["cyan"]};
+        selection-background-color: {c["blue"]};
     }}
     QListWidget::item {{
         min-height: 30px;

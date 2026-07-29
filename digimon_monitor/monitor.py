@@ -15,6 +15,7 @@ import numpy as np
 from .adb import AdbClient, AdbDevice
 from .config import AppConfig
 from .discord_notifier import DiscordNotifier
+from .i18n import Translator
 from .ocr import OcrEngine
 from .vision import (
     EquipmentState,
@@ -94,6 +95,7 @@ class DeviceMonitor(threading.Thread):
         log_callback: LogCallback,
         frame_callback: FrameCallback,
         status_callback: StatusCallback,
+        translator: Translator,
     ):
         super().__init__(
             name=f"monitor-{device.serial}",
@@ -109,6 +111,7 @@ class DeviceMonitor(threading.Thread):
         self.emit_log = log_callback
         self.emit_frame = frame_callback
         self.emit_status = status_callback
+        self.tr = translator
         self.vision = VisionAnalyzer(config.vision)
         self.ocr = OcrEngine(config.ocr)
         self.stable = StableState()
@@ -155,7 +158,7 @@ class DeviceMonitor(threading.Thread):
             self.notifier.send(message, frame)
             self.cooldowns.mark(key, now)
             self._save_frame(frame, key.replace(":", "_"))
-            self._log("info", f"Discord 通知已发送：{message}")
+            self._log("info", self.tr("log.discord_sent", message=message))
         except Exception as exc:
             self._log("error", str(exc))
 
@@ -175,7 +178,11 @@ class DeviceMonitor(threading.Thread):
                 self.last_observation = observation
                 self._log(
                     "info",
-                    f"观察模式：识别到“{action_name}”，未执行点击 {point}",
+                    self.tr(
+                        "log.observe_action",
+                        action=action_name,
+                        point=point,
+                    ),
                 )
             return
         self.adb.tap(self.device.serial, point[0], point[1])
@@ -183,7 +190,14 @@ class DeviceMonitor(threading.Thread):
         self.next_action_at = now + self.config.monitor.action_cooldown_seconds
         self.last_observation = ""
         self.stable.reset()
-        self._log("info", f"已{action_name}，坐标 {point}")
+        self._log(
+            "info",
+            self.tr(
+                "log.action_done",
+                action=action_name,
+                point=point,
+            ),
+        )
 
     def _handle_frame(self, frame: np.ndarray, now: float) -> None:
         result = self.vision.analyze(frame)
@@ -193,7 +207,7 @@ class DeviceMonitor(threading.Thread):
                 self._tap(
                     frame,
                     result.reward_close_click,
-                    "关闭任务奖励画面",
+                    self.tr("action.close_reward"),
                     "reward_close",
                     now,
                 )
@@ -204,14 +218,29 @@ class DeviceMonitor(threading.Thread):
             stable_count = self.stable.update(f"equipment:{equipment.value}")
             if equipment is EquipmentState.UNKNOWN:
                 if stable_count == 1:
-                    self._log("warning", "检测到装备弹窗，但箭头方向不明确；保持不动")
+                    self._log(
+                        "warning",
+                        self.tr("log.equipment_unknown"),
+                    )
                 return
             if stable_count < self.config.monitor.stable_frames_before_click:
                 return
             if equipment is EquipmentState.WORSE and result.sell_click:
-                self._tap(frame, result.sell_click, "点击出售", "sell_worse", now)
+                self._tap(
+                    frame,
+                    result.sell_click,
+                    self.tr("action.sell"),
+                    "sell_worse",
+                    now,
+                )
             elif equipment is EquipmentState.BETTER and result.equip_click:
-                self._tap(frame, result.equip_click, "点击装备", "equip_better", now)
+                self._tap(
+                    frame,
+                    result.equip_click,
+                    self.tr("action.equip"),
+                    "equip_better",
+                    now,
+                )
             return
 
         task_text = self.last_task_text
@@ -223,16 +252,23 @@ class DeviceMonitor(threading.Thread):
                 self.next_task_ocr = now + self.config.monitor.ocr_interval_seconds
             except Exception as exc:
                 task_text = ""
-                self._log("warning", f"任务 OCR 失败：{exc}")
+                self._log(
+                    "warning",
+                    self.tr("log.task_ocr_failed", error=exc),
+                )
 
-        special_task = classify_special_task(task_text)
-        if special_task:
+        special_task_key = classify_special_task(task_text)
+        if special_task_key:
+            special_task = self.tr(f"special.{special_task_key}")
             self._notify(
-                f"special:{special_task}",
+                f"special:{special_task_key}",
                 self.config.notifications.special_task_cooldown_seconds,
-                f"⚠️ 【{self.label}】发现特殊任务：{special_task}\n"
-                f"OCR：{task_text or '未读出文字'}\n"
-                "已阻止自动点击，请手动处理。",
+                self.tr(
+                    "notify.special",
+                    label=self.label,
+                    special=special_task,
+                    ocr=task_text or self.tr("notify.ocr_empty"),
+                ),
                 frame,
                 now,
             )
@@ -247,26 +283,32 @@ class DeviceMonitor(threading.Thread):
                     self._notify(
                         "ticket:insufficient",
                         self.config.notifications.ticket_cooldown_seconds,
-                        f"🎫 【{self.label}】全像/全息投影券不足，请补充后再继续。",
+                        self.tr("notify.ticket", label=self.label),
                         frame,
                         now,
                     )
             except Exception as exc:
-                self._log("warning", f"弹窗 OCR 失败：{exc}")
+                self._log(
+                    "warning",
+                    self.tr("log.dialog_ocr_failed", error=exc),
+                )
 
         if result.task_complete:
             stable_count = self.stable.update("task:complete")
-            if special_task:
+            if special_task_key:
                 return
             if not task_text.strip():
                 if stable_count == self.config.monitor.stable_frames_before_click:
-                    self._log("warning", "任务框已完成但 OCR 无结果；为防误点保持不动")
+                    self._log(
+                        "warning",
+                        self.tr("log.task_no_ocr"),
+                    )
                 return
             if stable_count >= self.config.monitor.stable_frames_before_click:
                 self._tap(
                     frame,
                     result.task_click,
-                    "领取已完成任务",
+                    self.tr("action.claim_task"),
                     "task_complete",
                     now,
                 )
@@ -275,7 +317,16 @@ class DeviceMonitor(threading.Thread):
 
     def run(self) -> None:
         self.emit_status(self.device.serial, "LINKING")
-        self._log("info", "监控线程已启动")
+        self._log("info", self.tr("log.thread_started"))
+        if self.ocr.missing_languages:
+            self._log(
+                "warning",
+                self.tr(
+                    "log.ocr_languages",
+                    active="+".join(self.ocr.active_languages),
+                    missing="+".join(self.ocr.missing_languages),
+                ),
+            )
         while not self.stop_event.is_set():
             cycle_start = time.monotonic()
             try:
@@ -287,7 +338,14 @@ class DeviceMonitor(threading.Thread):
             except Exception as exc:
                 self.failure_count += 1
                 if self.failure_count == 1 or self.failure_count % 10 == 0:
-                    self._log("error", f"监控失败（{self.failure_count}）：{exc}")
+                    self._log(
+                        "error",
+                        self.tr(
+                            "log.monitor_failed",
+                            count=self.failure_count,
+                            error=exc,
+                        ),
+                    )
                 self.emit_status(self.device.serial, "RETRYING")
 
             elapsed = time.monotonic() - cycle_start
@@ -297,7 +355,7 @@ class DeviceMonitor(threading.Thread):
             )
             self.stop_event.wait(wait_seconds)
         self.emit_status(self.device.serial, "OFFLINE")
-        self._log("info", "监控线程已停止")
+        self._log("info", self.tr("log.thread_stopped"))
 
 
 class MonitorController:
@@ -309,6 +367,7 @@ class MonitorController:
         log_callback: LogCallback,
         frame_callback: FrameCallback,
         status_callback: StatusCallback,
+        translator: Translator | None = None,
     ):
         self.config = config
         self.adb = adb
@@ -316,6 +375,7 @@ class MonitorController:
         self.log_callback = log_callback
         self.frame_callback = frame_callback
         self.status_callback = status_callback
+        self.tr = translator or Translator(config.ui.language)
         self.logger = build_logger(config.project_dir)
         self._automation_enabled = config.monitor.automation_enabled
         self._state_lock = threading.Lock()
@@ -333,8 +393,13 @@ class MonitorController:
     def set_automation_enabled(self, enabled: bool) -> None:
         with self._state_lock:
             self._automation_enabled = enabled
-        mode = "自动点击" if enabled else "观察模式"
-        self.log_callback("info", f"[SYSTEM] 已切换为 {mode}")
+        mode = self.tr(
+            "mode.automation" if enabled else "mode.observation"
+        )
+        self.log_callback(
+            "info",
+            self.tr("log.automation_mode", mode=mode),
+        )
 
     def start(self, devices: list[AdbDevice]) -> None:
         if self.running:
@@ -352,6 +417,7 @@ class MonitorController:
                 log_callback=self.log_callback,
                 frame_callback=self.frame_callback,
                 status_callback=self.status_callback,
+                translator=self.tr,
             )
             for device in devices
         ]

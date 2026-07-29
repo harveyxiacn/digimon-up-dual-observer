@@ -12,43 +12,38 @@ from typing import Iterable
 
 @dataclass(frozen=True, slots=True)
 class EmulatorSignature:
-    name: str
+    key: str
     process_names: frozenset[str]
-    adb_hint: str
     suggested_address: str = ""
 
 
 @dataclass(frozen=True, slots=True)
 class RunningEmulator:
-    name: str
+    key: str
     matched_processes: tuple[str, ...]
-    adb_hint: str
     suggested_address: str = ""
 
 
 EMULATOR_SIGNATURES = (
     EmulatorSignature(
-        name="BlueStacks",
+        key="bluestacks",
         process_names=frozenset(
             {"hd-player", "bluestacks", "bluestacksappplayer"}
         ),
-        adb_hint="设置 → 高级 → 开启“Android 调试(ADB)”，保存并记下端口。",
     ),
     EmulatorSignature(
-        name="雷电模拟器 / LDPlayer",
+        key="ldplayer",
         process_names=frozenset(
             {"dnplayer", "ldplayer", "ldplayer9"}
         ),
-        adb_hint="设置 → 其他设置 → ADB 调试 → 开启本地连接。",
     ),
     EmulatorSignature(
-        name="夜神模拟器 / NoxPlayer",
+        key="nox",
         process_names=frozenset({"nox", "noxplayer"}),
-        adb_hint="设置中开启 Root/ADB 调试；首个实例通常使用本地 62001 端口。",
         suggested_address="127.0.0.1:62001",
     ),
     EmulatorSignature(
-        name="MuMu 模拟器",
+        key="mumu",
         process_names=frozenset(
             {
                 "mumuplayer",
@@ -57,21 +52,18 @@ EMULATOR_SIGNATURES = (
                 "mumuemulator",
             }
         ),
-        adb_hint="在问题诊断或多开器中查看 ADB 端口；部分版本使用 7555。",
         suggested_address="127.0.0.1:7555",
     ),
     EmulatorSignature(
-        name="逍遥模拟器 / MEmu",
+        key="memu",
         process_names=frozenset({"memu", "memuconsole"}),
-        adb_hint="启动模拟器并开启 ADB；首个实例常见本地端口为 21503。",
         suggested_address="127.0.0.1:21503",
     ),
     EmulatorSignature(
-        name="Genymotion",
+        key="genymotion",
         process_names=frozenset(
             {"genymotion", "genymotion-player"}
         ),
-        adb_hint="在 Android SDK 设置中选择使用本机 SDK，然后刷新 ADB。",
     ),
 )
 
@@ -208,9 +200,8 @@ def detect_running_emulators(
         if matches:
             detected.append(
                 RunningEmulator(
-                    name=signature.name,
+                    key=signature.key,
                     matched_processes=matches,
-                    adb_hint=signature.adb_hint,
                     suggested_address=signature.suggested_address,
                 )
             )

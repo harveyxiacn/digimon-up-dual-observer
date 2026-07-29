@@ -1,0 +1,132 @@
+# DIGIMON UP // OBSERVER
+
+[简体中文](README.zh-CN.md) | [繁體中文](README.zh-TW.md) | [English](README.md) | **日本語**
+
+Windows上の主要なAndroidエミュレーターで動作するDigimon UP向けの画面監視・安全自動化ツールです。WindowsのマウスではなくADBでスクリーンショットとタップを処理するため、エミュレーターを最小化したり別のディスプレイに配置したりできます。初期状態では1台を監視し、複数エミュレーターモードでは最大2台に対応します。
+
+![ピクセルスタイルのエミュレーター監視UI](docs/ui-preview.png)
+
+## 機能
+
+- 初期状態では安全なADBエミュレーターを1台選択し、1つのライブ画面を表示します。
+- 複数エミュレーターモードでは最大2台を同時に表示・監視できます。
+- 管理者権限なしでBlueStacks、LDPlayer、NoxPlayer、MuMu Player、MEmu、Genymotionのプロセスを検出します。
+- 緑色の完了ミッション枠を2フレーム連続で確認してから報酬を受け取ります。
+- 受け取り後、画面幅全体に表示される青い報酬画面を検出して閉じます。
+- スキルカードまたは支援型デジモンの抽選ミッションでは自動受け取りを停止し、Discordへスクリーンショットを送信します。
+- 装備処理は大きな「売却」と「装備」ボタンの両方を確認した場合だけ実行します。
+  - 緑の上矢印：装備；
+  - 交換後、旧装備が赤の下矢印：売却；
+  - 最初から赤の下矢印：直接売却；
+  - 矢印が不明：操作せず警告を記録。
+- OCRでホログラム/投影チケット不足を検出すると、クールダウン付きDiscord通知を送信します。
+- 自動クリックをいつでも無効にし、認識のみの監視モードへ切り替えられます。
+- UI、実行ログ、ダイアログ、主要エラー、Discord通知は簡体字中国語、繁体字中国語、英語、日本語に対応します。
+
+## インストールと実行
+
+依存関係がインストール済みの場合：
+
+```powershell
+.\run.ps1
+```
+
+`start-monitor.bat`をダブルクリックしても起動できます。
+
+初回インストール：
+
+```powershell
+.\install.ps1
+.\run.ps1
+```
+
+次に：
+
+1. エミュレーター設定でADB/ローカルデバッグを有効にします。
+2. エミュレーターとDigimon UPを起動します。
+3. 監視ツールを開き、「ADBを更新」を押します。
+4. `config.local.example.yaml`を`config.local.yaml`へコピーし、ローカルADBポートと任意のデバイス名を設定します。このファイルはGitに含まれません。
+5. 1アカウントでは既定のシングルモードを使い、複数起動時は複数エミュレーターモードを有効にして2台目を選びます。
+6. ゲームUI更新後は、最初に監視のみで数分間確認してから自動クリックを有効にしてください。
+
+プロセス検出はWindows標準のTool HelpプロセススナップショットAPIを使い、実行ファイル名だけを読み取ります。管理者権限は不要で、ゲームアカウント、ウィンドウタイトル、プログラムパス、コマンドライン、エミュレーター内のファイルは読み取りません。
+
+- [BlueStacks公式ADBガイド](https://support.bluestacks.com/hc/en-us/articles/23925869130381-How-to-enable-Android-Debug-Bridge-on-BlueStacks-5)
+- [LDPlayerローカルADBガイド](https://pre-prod-web-next.ldplayer.net/blog/introduction-to-version-4.0.37-and-3.102-features.html)
+- [MuMu公式開発ガイド](https://www.mumuplayer.com/help/win/developers-essentials-manual.html)
+
+## 言語選択
+
+画面右上の言語セレクターを使用します。変更はすぐに反映され、ローカルの`.env`へ`DIGIMON_UI_LANGUAGE`として保存されます。
+
+- `zh_CN` — 简体中文
+- `zh_TW` — 繁體中文
+- `en` — English
+- `ja` — 日本語
+
+同梱のFusion Pixelフォントはラテン、簡体字、繁体字、日本語の字形を自動選択します。対応ファイルがない場合はWindowsのUIフォントへ安全にフォールバックします。
+
+## ゲームOCR言語
+
+既定のOCR要求は`chi_tra+chi_sim+jpn+eng`です。インストール済みのTesseract言語パックだけを自動的に利用し、不足している言語はログへ表示します。1つの言語パックがなくてもOCR全体は停止しません。
+
+中国語、英語、日本語で次の分類に対応します。
+
+- スキルカード抽選ミッション；
+- 支援型デジモン抽選ミッション；
+- ホログラム/投影チケット不足。
+
+日本語のゲーム画面を認識する場合は、Tesseract日本語学習データ`jpn`をインストールしてください。ソフトウェアのUI言語とゲームOCR言語は独立しています。
+
+## Discord Webhookとプライバシー
+
+Webhookは次のいずれかで設定します。
+
+1. UIのマスクされたDiscord入力欄へ貼り付け、テスト信号を送るか監視を開始します。
+2. `.env.example`を`.env`へコピーし、`DIGIMON_DISCORD_WEBHOOK_URL`を設定します。
+
+`.env`、`config.local.yaml`、`captures/`、`logs/`は`.gitignore`で除外されています。実際のWebhookを`config.yaml`、ソースコード、Issue、スクリーンショット、コミットへ書かないでください。公開された場合はDiscord上ですぐに削除して再作成してください。
+
+## 安全境界
+
+- ADBタップはスクリーンショット座標を使い、Windowsのマウスを動かしません。
+- ミッション受け取りには、緑枠、空でないOCR、2フレーム連続確認が必要です。
+- 報酬画面を閉じるには、青いオーバーレイが画面中央のほぼ全幅を覆う必要があります。装備ダイアログは条件を満たしません。
+- 特別抽選ミッションは自動受け取りより優先されます。
+- 装備操作にはピンクの「売却」と青の「装備」の組み合わせが必要です。
+- 不明な装備状態では必ず操作しません。
+- 操作間隔は既定で2.5秒以上です。Discord通知にも重複防止とクールダウンがあります。
+
+しきい値と時間設定は[config.yaml](config.yaml)にあります。ゲームUI、言語、画面比率が大きく変わった場合は監視のみへ戻して再調整してください。
+
+## 検証
+
+```powershell
+python -m pytest
+python tools\analyze_samples.py "スクリーンショットのフォルダー"
+```
+
+## UIとフォント
+
+濃紺のデジタルワールド背景、シアンの回路グリッド、D-3風ステータス色、D-Ark風カード枠、D-Scanner風の赤/青警告領域を組み合わせています。アニメのロゴ、キャラクター画像、ゲーム素材は複製していません。
+
+**Fusion Pixel 12px Proportional**の4言語字形をSIL Open Font License 1.1に基づいて同梱しています。上流ライセンスは`assets/fonts/`にあります。
+
+- [Fusion Pixel Fontとライセンス](https://github.com/TakWolf/fusion-pixel-font)
+- [Bandai D-Scannerビジュアル参考](https://www.bandai.co.jp/catalog/item.php?jan_cd=4543112120243000)
+- [Bandai D-Scannerカラー参考](https://www.atpress.ne.jp/news/328455)
+
+## プロジェクト構成
+
+```text
+digimon_monitor/
+  i18n.py                4言語翻訳と言語選択
+  adb.py                 ADBデバイス、スクリーンショット、タップ
+  vision.py              ミッション、報酬、装備の画像認識
+  ocr.py                 多言語OCRと導入済み言語へのフォールバック
+  monitor.py             安定フレーム、クールダウン、通知、自動処理
+  discord_notifier.py    非公開Discord Webhookと画像添付
+  ui.py / theme.py       PySide6ピクセルUIとローカライズフォント
+tools/analyze_samples.py 参照画像回帰ツール
+tests/                   画像、言語、設定、デバイス選択テスト
+```

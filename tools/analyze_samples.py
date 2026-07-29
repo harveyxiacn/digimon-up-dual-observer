@@ -30,7 +30,7 @@ EXPECTED = {
     "ef78fe702599e67a49ea217fb90eb2e8.jpg": {
         "task": False,
         "equipment": EquipmentState.NONE,
-        "special": "抽取支援型數碼寶貝",
+        "special": "support_digimon",
     },
     "9d669f48509fe6503ce363393363a6c7.jpg": {
         "task": False,

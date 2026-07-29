@@ -7,15 +7,23 @@ import cv2
 import numpy as np
 import requests
 
+from .i18n import Translator
+
 
 class DiscordError(RuntimeError):
     pass
 
 
 class DiscordNotifier:
-    def __init__(self, webhook_url: str = "", timeout_seconds: float = 12):
+    def __init__(
+        self,
+        webhook_url: str = "",
+        timeout_seconds: float = 12,
+        translator: Translator | None = None,
+    ):
         self.webhook_url = webhook_url.strip()
         self.timeout_seconds = timeout_seconds
+        self.tr = translator or Translator()
         self._lock = threading.Lock()
 
     def set_webhook(self, webhook_url: str) -> None:
@@ -30,9 +38,9 @@ class DiscordNotifier:
         with self._lock:
             webhook_url = self.webhook_url
         if not webhook_url:
-            raise DiscordError("Discord Webhook 尚未设置")
+            raise DiscordError(self.tr("error.webhook_missing"))
         if not webhook_url.startswith("https://discord.com/api/webhooks/"):
-            raise DiscordError("Discord Webhook URL 格式不正确")
+            raise DiscordError(self.tr("error.webhook_invalid"))
 
         payload = {
             "content": content[:1900],
@@ -59,10 +67,15 @@ class DiscordNotifier:
                 timeout=self.timeout_seconds,
             )
         except requests.RequestException as exc:
-            raise DiscordError(f"Discord 连接失败：{exc}") from exc
+            raise DiscordError(
+                self.tr("error.discord_connect", error=exc)
+            ) from exc
         if response.status_code not in (200, 204):
             detail = response.text[:300].strip()
             raise DiscordError(
-                f"Discord 返回 HTTP {response.status_code}"
-                + (f"：{detail}" if detail else "")
+                self.tr(
+                    "error.discord_http",
+                    status=response.status_code,
+                    detail=f": {detail}" if detail else "",
+                )
             )

@@ -1,0 +1,10 @@
+Fusion Pixel Font
+Release: 2026.07.20
+Source: https://github.com/TakWolf/fusion-pixel-font
+Asset: fusion-pixel-font-12px-proportional-ttf-v2026.07.20.zip
+
+Bundled variants:
+- latin
+- zh_hans
+- zh_hant
+- ja
