@@ -11,7 +11,8 @@ A Windows screen monitor and safe automation helper for Digimon UP running in po
 - Selects and monitors one safe ADB emulator by default, with one live preview.
 - Optional multi-emulator mode displays and monitors up to two instances.
 - Detects BlueStacks, LDPlayer, NoxPlayer, MuMu Player, MEmu, and Genymotion processes without administrator privileges.
-- Confirms a completed green task frame across two screenshots before claiming it.
+- Claims a task only after two frames show a green completion border, a green current count, and no red current-progress digits. The slash and required count may remain white. A white border, a red current count, or an OCR fraction such as `1/2` blocks the click.
+- Detects the white food bubble beside the center Digimon, clicks it once, and waits for it to disappear before re-arming.
 - Detects and closes the full-width blue reward screen after a claim.
 - Blocks automatic claims and sends a Discord screenshot for skill-card or support-type Digimon draw tasks.
 - Equipment flow requires both large Sell and Equip buttons:
@@ -90,7 +91,8 @@ Configure the Webhook in either of these ways:
 ## Safety boundaries
 
 - ADB taps use screenshot coordinates and never move the Windows mouse.
-- Task claiming requires a green frame, non-empty OCR, and two consecutive confirmations.
+- Task claiming requires a green border, a green current count with no red current-progress digits, non-empty OCR, and two consecutive confirmations. A white border, a red current count, or a recognized incomplete fraction always blocks the click.
+- Food prompts require two consecutive detections, fire once per appearance, and re-arm only after two frames confirm that the bubble disappeared.
 - Reward closing requires a blue overlay covering almost the full middle width; equipment dialogs do not satisfy it.
 - Special draw tasks take priority over automatic claims.
 - Equipment actions require a paired pink Sell button and blue Equip button.

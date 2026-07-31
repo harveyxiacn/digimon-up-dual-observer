@@ -77,6 +77,7 @@ def main() -> int:
             f"equipment={result.equipment_state.value} "
             f"green={result.green_equipment_ratio:.4f} "
             f"red={result.red_equipment_ratio:.4f} "
+            f"food={result.food_prompt} "
             f"special={actual_special or '-'}"
         )
         if result.task_complete != expected["task"]:
@@ -92,6 +93,11 @@ def main() -> int:
             failures.append(
                 f"{filename}: special {actual_special!r} "
                 f"!= {expected.get('special')!r}; OCR={task_text!r}"
+            )
+        if result.food_prompt != expected.get("food", False):
+            failures.append(
+                f"{filename}: food {result.food_prompt} "
+                f"!= {expected.get('food', False)}"
             )
 
     if failures:

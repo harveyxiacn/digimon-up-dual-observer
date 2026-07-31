@@ -15,6 +15,12 @@ Point = tuple[int, int]
 Box = tuple[int, int, int, int]
 
 
+# The interaction bubble has a white tile and cyan border, with a food sprite
+# in its middle.  A minimum amount of dark/brown sprite detail prevents large
+# white/cyan combat effects (especially ice effects) from being clicked.
+FOOD_PROMPT_DARK_CORE_RATIO = 0.05
+
+
 class EquipmentState(str, Enum):
     NONE = "none"
     BETTER = "better"
@@ -35,6 +41,12 @@ class VisualResult:
     equip_click: Point | None
     green_equipment_ratio: float = 0.0
     red_equipment_ratio: float = 0.0
+    task_incomplete: bool = False
+    task_progress_red_ratio: float = 0.0
+    task_current_green: bool = False
+    food_prompt: bool = False
+    food_score: float = 0.0
+    food_click: Point | None = None
 
 
 def _fraction(mask: np.ndarray) -> float:
@@ -97,6 +109,108 @@ def _center(box: Box) -> Point:
     return x + w // 2, y + h // 2
 
 
+def _food_prompt(
+    hsv: np.ndarray,
+    settings: VisionSettings,
+) -> tuple[bool, float, Point | None]:
+    """Detect the white food bubble beside the center Digimon.
+
+    The food artwork varies, but the prompt consistently uses a bright white
+    tile with a cyan outline in a narrow battle-area band. Local window ratios
+    avoid depending on a specific food sprite.
+    """
+    h, w = hsv.shape[:2]
+    white = cv2.inRange(hsv, (0, 0, 180), (179, 90, 255))
+    cyan = cv2.inRange(hsv, (75, 80, 140), (110, 255, 255))
+    brown_food = cv2.inRange(hsv, (0, 45, 25), (40, 255, 220))
+    dark_food = cv2.inRange(hsv, (0, 0, 25), (179, 255, 100))
+    food_core = cv2.bitwise_or(brown_food, dark_food)
+    window_width = max(3, int(0.060 * w) | 1)
+    window_height = max(3, int(0.035 * h) | 1)
+    kernel = (window_width, window_height)
+    white_ratio = cv2.boxFilter(
+        white.astype(np.float32) / 255.0,
+        -1,
+        kernel,
+        normalize=True,
+    )
+    cyan_ratio = cv2.boxFilter(
+        cyan.astype(np.float32) / 255.0,
+        -1,
+        kernel,
+        normalize=True,
+    )
+    # The core is intentionally much smaller than the tile.  Measuring it
+    # separately keeps dark scenery outside a bright effect from counting as
+    # a food sprite.
+    core_width = max(3, int(0.025 * w) | 1)
+    core_height = max(3, int(0.014 * h) | 1)
+    dark_food_ratio = cv2.boxFilter(
+        food_core.astype(np.float32) / 255.0,
+        -1,
+        (core_width, core_height),
+        normalize=True,
+    )
+    score_map = white_ratio + 2.0 * cyan_ratio
+
+    # The game keeps the prompt tied to the central Digimon, whose apparent
+    # location moves slightly with emulator aspect ratio.  This covers both
+    # the 9:16 LDPlayer layout and the taller BlueStacks layout.
+    aspect = w / h
+    expected_x = float(np.clip(0.27 + 0.43 * aspect, 0.46, 0.51))
+    expected_y = float(np.clip(0.51 - 0.255 * aspect, 0.365, 0.395))
+    x0, x1 = int((expected_x - 0.05) * w), int((expected_x + 0.05) * w)
+    y0, y1 = int((expected_y - 0.017) * h), int((expected_y + 0.017) * h)
+    valid_prompt = (
+        (white_ratio >= settings.food_prompt_white_pixel_ratio)
+        & (cyan_ratio >= settings.food_prompt_cyan_pixel_ratio)
+        & (dark_food_ratio >= FOOD_PROMPT_DARK_CORE_RATIO)
+    )
+    search = score_map[y0:y1, x0:x1].copy()
+    if search.size == 0:
+        return False, 0.0, None
+    search[~valid_prompt[y0:y1, x0:x1]] = -1.0
+    _, score, _, location = cv2.minMaxLoc(search)
+    if score < 0:
+        return False, 0.0, None
+    center = (x0 + location[0], y0 + location[1])
+    return True, float(score), center
+
+
+def _task_current_green(green_task: np.ndarray) -> bool:
+    """Return whether the task's current-completion number is green.
+
+    A complete task has a luminous green outline and a small green current
+    count (``5/5`` or ``10/10``).  The target count itself is white, so a
+    broad green-pixel ratio is insufficient.  We look for digit-sized green
+    components only in the text portion of the card and exclude its outline
+    and the lower reward icon.
+    """
+    height, width = green_task.shape[:2]
+    x0, x1 = int(0.20 * width), int(0.86 * width)
+    y0, y1 = int(0.08 * height), int(0.55 * height)
+    text_green = green_task[y0:y1, x0:x1]
+    if text_green.size == 0:
+        return False
+
+    component_count, _, stats, _ = cv2.connectedComponentsWithStats(
+        text_green,
+        cv2.CV_32S,
+    )
+    card_area = width * height
+    min_area = max(4, int(0.0004 * card_area))
+    max_area = max(min_area, int(0.025 * card_area))
+    for index in range(1, component_count):
+        _, _, component_width, component_height, area = stats[index]
+        if (
+            min_area <= area <= max_area
+            and 0.01 * width <= component_width <= 0.18 * width
+            and 0.02 * height <= component_height <= 0.28 * height
+        ):
+            return True
+    return False
+
+
 def _paired_buttons(
     pink_boxes: Iterable[Box],
     blue_boxes: Iterable[Box],
@@ -138,9 +252,41 @@ class VisionAnalyzer:
         ]
         task_score = _fraction(all_task)
         band_score = max((_fraction(band) for band in task_bands), default=0.0)
+
+        # In an unfinished mission the current count is red; after completion
+        # that current count and the card outline turn green while the target
+        # count remains white. A green reward icon previously leaked into the
+        # broad task mask and could look like a completed frame.
+        task_width = x1 - x0
+        task_height = y1 - y0
+        progress_roi = _crop(
+            hsv,
+            x0 + 0.20 * task_width,
+            y0 + 0.08 * task_height,
+            x0 + 0.86 * task_width,
+            y0 + 0.55 * task_height,
+        )
+        progress_red_low = cv2.inRange(
+            progress_roi, (0, 140, 140), (20, 255, 255)
+        )
+        progress_red_high = cv2.inRange(
+            progress_roi, (170, 140, 140), (179, 255, 255)
+        )
+        progress_red = cv2.bitwise_or(
+            progress_red_low,
+            progress_red_high,
+        )
+        task_progress_red_ratio = _fraction(progress_red)
+        task_incomplete = (
+            task_progress_red_ratio
+            >= self.settings.task_incomplete_red_pixel_ratio
+        )
+        task_current_green = _task_current_green(all_task)
         task_complete = (
             task_score >= self.settings.task_complete_min_score
             and band_score >= self.settings.task_complete_band_score
+            and task_current_green
+            and not task_incomplete
         )
 
         # Claiming a completed task opens a full-width translucent blue reward
@@ -206,6 +352,15 @@ class VisionAnalyzer:
             else:
                 equipment_state = EquipmentState.UNKNOWN
 
+        food_prompt = False
+        food_score = 0.0
+        food_click: Point | None = None
+        if not reward_popup and pair is None:
+            food_prompt, food_score, food_click = _food_prompt(
+                hsv,
+                self.settings,
+            )
+
         return VisualResult(
             task_complete=task_complete,
             task_score=task_score,
@@ -218,11 +373,33 @@ class VisionAnalyzer:
             equip_click=equip_click,
             green_equipment_ratio=green_ratio,
             red_equipment_ratio=red_ratio,
+            task_incomplete=task_incomplete,
+            task_progress_red_ratio=task_progress_red_ratio,
+            task_current_green=task_current_green,
+            food_prompt=food_prompt,
+            food_score=food_score,
+            food_click=food_click,
         )
 
 
 def normalize_ocr_text(text: str) -> str:
     return re.sub(r"[\s\W_]+", "", text, flags=re.UNICODE).lower()
+
+
+def task_progress_complete(text: str) -> bool | None:
+    """Return OCR progress state, or None when no reliable fraction exists."""
+    matches = re.findall(
+        r"(?<!\d)(\d{1,4})\s*[/／\\|]+\s*(\d{1,4})(?!\d)",
+        text,
+    )
+    progress = [
+        (int(current), int(target))
+        for current, target in matches
+        if int(target) > 0
+    ]
+    if not progress:
+        return None
+    return all(current >= target for current, target in progress)
 
 
 def classify_special_task(text: str) -> str | None:

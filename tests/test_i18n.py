@@ -69,3 +69,11 @@ def test_dotenv_saves_language_and_webhook_without_overwriting(tmp_path) -> None
     dotenv = (tmp_path / ".env").read_text(encoding="utf-8")
     assert dotenv.count("DIGIMON_UI_LANGUAGE=") == 1
     assert dotenv.count("DIGIMON_DISCORD_WEBHOOK_URL=") == 1
+
+
+def test_new_vision_thresholds_have_safe_package_defaults(tmp_path) -> None:
+    config = load_config(tmp_path)
+
+    assert config.vision.task_incomplete_red_pixel_ratio > 0
+    assert 0 < config.vision.food_prompt_white_pixel_ratio < 1
+    assert 0 < config.vision.food_prompt_cyan_pixel_ratio < 1
