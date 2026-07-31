@@ -22,6 +22,7 @@ from .vision import (
     VisionAnalyzer,
     classify_special_task,
     is_ticket_insufficient,
+    task_progress_complete,
 )
 
 
@@ -82,6 +83,37 @@ class Cooldowns:
         self._last[key] = now
 
 
+class ReappearingPromptLatch:
+    """Fire once per prompt appearance and re-arm after stable absence."""
+
+    def __init__(self, stable_frames: int) -> None:
+        self.stable_frames = max(1, stable_frames)
+        self.present_frames = 0
+        self.absent_frames = 0
+        self.armed = True
+
+    def update(self, present: bool) -> bool:
+        if present:
+            self.absent_frames = 0
+            if not self.armed:
+                return False
+            self.present_frames += 1
+            return self.present_frames >= self.stable_frames
+
+        self.present_frames = 0
+        if not self.armed:
+            self.absent_frames += 1
+            if self.absent_frames >= self.stable_frames:
+                self.armed = True
+                self.absent_frames = 0
+        return False
+
+    def mark_handled(self) -> None:
+        self.armed = False
+        self.present_frames = 0
+        self.absent_frames = 0
+
+
 class DeviceMonitor(threading.Thread):
     def __init__(
         self,
@@ -115,6 +147,9 @@ class DeviceMonitor(threading.Thread):
         self.vision = VisionAnalyzer(config.vision)
         self.ocr = OcrEngine(config.ocr)
         self.stable = StableState()
+        self.food_prompt_latch = ReappearingPromptLatch(
+            config.monitor.stable_frames_before_click
+        )
         self.cooldowns = Cooldowns()
         self.next_task_ocr = 0.0
         self.next_dialog_ocr = 0.0
@@ -169,9 +204,9 @@ class DeviceMonitor(threading.Thread):
         action_name: str,
         event_name: str,
         now: float,
-    ) -> None:
+    ) -> bool:
         if now < self.next_action_at:
-            return
+            return False
         if not self.automation_enabled():
             observation = f"{event_name}:{point}"
             if observation != self.last_observation:
@@ -184,7 +219,7 @@ class DeviceMonitor(threading.Thread):
                         point=point,
                     ),
                 )
-            return
+            return False
         self.adb.tap(self.device.serial, point[0], point[1])
         self._save_frame(frame, event_name)
         self.next_action_at = now + self.config.monitor.action_cooldown_seconds
@@ -198,6 +233,7 @@ class DeviceMonitor(threading.Thread):
                 point=point,
             ),
         )
+        return True
 
     def _handle_frame(self, frame: np.ndarray, now: float) -> None:
         result = self.vision.analyze(frame)
@@ -241,6 +277,21 @@ class DeviceMonitor(threading.Thread):
                     "equip_better",
                     now,
                 )
+            return
+
+        food_prompt_ready = self.food_prompt_latch.update(
+            result.food_prompt
+        )
+        if food_prompt_ready and result.food_click:
+            handled = self._tap(
+                frame,
+                result.food_click,
+                self.tr("action.food_prompt"),
+                "food_prompt",
+                now,
+            )
+            if handled:
+                self.food_prompt_latch.mark_handled()
             return
 
         task_text = self.last_task_text
@@ -293,6 +344,15 @@ class DeviceMonitor(threading.Thread):
                     self.tr("log.dialog_ocr_failed", error=exc),
                 )
 
+        if result.task_incomplete:
+            stable_count = self.stable.update("task:incomplete")
+            if stable_count == self.config.monitor.stable_frames_before_click:
+                self._log(
+                    "info",
+                    self.tr("log.task_incomplete"),
+                )
+            return
+
         if result.task_complete:
             stable_count = self.stable.update("task:complete")
             if special_task_key:
@@ -302,6 +362,16 @@ class DeviceMonitor(threading.Thread):
                     self._log(
                         "warning",
                         self.tr("log.task_no_ocr"),
+                    )
+                return
+            if task_progress_complete(task_text) is False:
+                if (
+                    stable_count
+                    == self.config.monitor.stable_frames_before_click
+                ):
+                    self._log(
+                        "info",
+                        self.tr("log.task_incomplete"),
                     )
                 return
             if stable_count >= self.config.monitor.stable_frames_before_click:

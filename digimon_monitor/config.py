@@ -46,6 +46,9 @@ class AdbSettings:
 class VisionSettings:
     task_complete_min_score: float = 0.035
     task_complete_band_score: float = 0.08
+    task_incomplete_red_pixel_ratio: float = 0.004
+    food_prompt_white_pixel_ratio: float = 0.28
+    food_prompt_cyan_pixel_ratio: float = 0.06
     equipment_red_pixel_ratio: float = 0.00020
     equipment_green_pixel_ratio: float = 0.00045
 

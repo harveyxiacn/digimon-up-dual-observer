@@ -24,6 +24,9 @@ adb:
 vision:
   task_complete_min_score: 0.035
   task_complete_band_score: 0.08
+  task_incomplete_red_pixel_ratio: 0.004
+  food_prompt_white_pixel_ratio: 0.28
+  food_prompt_cyan_pixel_ratio: 0.06
   equipment_red_pixel_ratio: 0.00020
   equipment_green_pixel_ratio: 0.00045
 

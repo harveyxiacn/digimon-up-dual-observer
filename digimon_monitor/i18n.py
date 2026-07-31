@@ -30,7 +30,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "group.protocol": "03 // Automation Protocol",
         "automation.enable": "Enable automatic clicks",
         "protocol.text": (
-            "[OK] Green task frame → Claim\n"
+            "[OK] Green frame + green current count → Claim\n"
+            "[OK] White food bubble → Tap once\n"
             "[OK] Green up arrow → Equip, then sell old item\n"
             "[OK] Red down arrow → Sell\n"
             "[!] Special draw / ticket shortage → Discord"
@@ -96,6 +97,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "action.sell": "tap Sell",
         "action.equip": "tap Equip",
         "action.claim_task": "claim completed task",
+        "action.food_prompt": "tap the food bubble",
         "log.equipment_unknown": (
             "Equipment dialog detected, but arrow direction is unclear; "
             "no action taken"
@@ -117,6 +119,9 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "log.task_no_ocr": (
             "Task frame is complete but OCR returned no text; "
             "no action taken for safety"
+        ),
+        "log.task_incomplete": (
+            "Task progress is still incomplete; no click was sent"
         ),
         "log.thread_started": "Monitor thread started",
         "log.monitor_failed": "Monitor failed ({count}): {error}",
@@ -182,7 +187,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "group.protocol": "03 // 自动处理协议",
         "automation.enable": "启用自动点击",
         "protocol.text": (
-            "[OK] 绿色任务框 → 领取\n"
+            "[OK] 绿色框 + 当前完成数绿色 → 领取\n"
+            "[OK] 白底食物气泡 → 只点击一次\n"
             "[OK] 绿色上箭头 → 装备后出售旧件\n"
             "[OK] 红色下箭头 → 出售\n"
             "[!] 特殊抽卡 / 投影券不足 → Discord"
@@ -245,6 +251,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "action.sell": "点击出售",
         "action.equip": "点击装备",
         "action.claim_task": "领取已完成任务",
+        "action.food_prompt": "点击食物气泡",
         "log.equipment_unknown": (
             "检测到装备弹窗，但箭头方向不明确；保持不动"
         ),
@@ -264,6 +271,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "log.task_no_ocr": (
             "任务框已完成但 OCR 无结果；为防误点保持不动"
         ),
+        "log.task_incomplete": "任务进度尚未完成；不会发送点击",
         "log.thread_started": "监控线程已启动",
         "log.monitor_failed": "监控失败（{count}）：{error}",
         "log.thread_stopped": "监控线程已停止",
@@ -321,7 +329,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "group.protocol": "03 // 自動處理協定",
         "automation.enable": "啟用自動點擊",
         "protocol.text": (
-            "[OK] 綠色任務框 → 領取\n"
+            "[OK] 綠色框 + 目前完成數綠色 → 領取\n"
+            "[OK] 白底食物氣泡 → 只點擊一次\n"
             "[OK] 綠色上箭頭 → 裝備後出售舊件\n"
             "[OK] 紅色下箭頭 → 出售\n"
             "[!] 特殊抽卡 / 投影券不足 → Discord"
@@ -384,6 +393,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "action.sell": "點擊出售",
         "action.equip": "點擊裝備",
         "action.claim_task": "領取已完成任務",
+        "action.food_prompt": "點擊食物氣泡",
         "log.equipment_unknown": (
             "偵測到裝備彈窗，但箭頭方向不明確；保持不動"
         ),
@@ -403,6 +413,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "log.task_no_ocr": (
             "任務框已完成但 OCR 無結果；為防誤點保持不動"
         ),
+        "log.task_incomplete": "任務進度尚未完成；不會傳送點擊",
         "log.thread_started": "監控執行緒已啟動",
         "log.monitor_failed": "監控失敗（{count}）：{error}",
         "log.thread_stopped": "監控執行緒已停止",
@@ -461,7 +472,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "group.protocol": "03 // 自動処理プロトコル",
         "automation.enable": "自動クリックを有効化",
         "protocol.text": (
-            "[OK] 緑のミッション枠 → 受け取る\n"
+            "[OK] 緑枠 + 現在の完了数が緑 → 受け取る\n"
+            "[OK] 白い食べ物バブル → 1回だけクリック\n"
             "[OK] 緑の上矢印 → 装備後、旧装備を売却\n"
             "[OK] 赤の下矢印 → 売却\n"
             "[!] 特別ガチャ / チケット不足 → Discord"
@@ -534,6 +546,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "action.sell": "「売却」をクリック",
         "action.equip": "「装備」をクリック",
         "action.claim_task": "完了ミッションの報酬を受け取る",
+        "action.food_prompt": "食べ物バブルをクリック",
         "log.equipment_unknown": (
             "装備ダイアログを検出しましたが矢印の方向が不明なため、"
             "操作しません"
@@ -555,6 +568,9 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "log.task_no_ocr": (
             "ミッション完了枠を検出しましたがOCR結果がないため、"
             "安全のため操作しません"
+        ),
+        "log.task_incomplete": (
+            "ミッション進捗が未完了のため、クリックしません"
         ),
         "log.thread_started": "監視スレッドを開始",
         "log.monitor_failed": "監視に失敗（{count}）：{error}",
