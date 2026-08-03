@@ -19,7 +19,8 @@ A Windows screen monitor and safe automation helper for Digimon UP running in po
   - green up arrows: Equip;
   - the replaced item then shows red down arrows: Sell;
   - red down arrows on the initial popup: Sell directly;
-  - unclear arrows: do nothing and write a warning.
+  - unclear arrows: compare OCR-readable affixes by priority (both Crit Rate + Skill Crit Rate, Crit Rate only, Skill Crit Rate only, then none); equip only when the new item is strictly higher, otherwise sell it;
+  - unreliable affix OCR: do nothing and write a warning.
 - Sends a rate-limited Discord screenshot when OCR detects insufficient hologram/projection tickets.
 - Automatic clicks can be disabled at any time for observation-only mode.
 - UI, runtime logs, dialogs, main errors, and Discord notifications support Simplified Chinese, Traditional Chinese, English, and Japanese.
@@ -96,7 +97,8 @@ Configure the Webhook in either of these ways:
 - Reward closing requires a blue overlay covering almost the full middle width; equipment dialogs do not satisfy it.
 - Special draw tasks take priority over automatic claims.
 - Equipment actions require a paired pink Sell button and blue Equip button.
-- Unknown equipment state always means no action.
+- When no green/red arrow is present, the OCR affix fallback only equips a strictly higher-priority item; ties and lower priorities are sold, while unreliable OCR always means no action.
+- Unreadable equipment panels or missing paired action buttons always mean no action.
 - Actions are separated by at least 2.5 seconds by default; Discord events also have deduplication and cooldowns.
 
 Thresholds and timing are in [config.yaml](config.yaml). Return to observation-only mode and recalibrate after major game UI, language, or aspect-ratio changes.
@@ -133,6 +135,7 @@ digimon_monitor/
   adb.py                 ADB devices, screenshots, and taps
   vision.py              Task, reward, and equipment visual recognition
   ocr.py                 Multilingual OCR with installed-pack fallback
+  equipment.py           Multilingual affix ranking and safe decisions
   monitor.py             Stable-frame state machine, cooldowns, notifications
   discord_notifier.py    Private Discord Webhook and image attachments
   ui.py / theme.py       PySide6 pixel-style desktop UI and localized fonts

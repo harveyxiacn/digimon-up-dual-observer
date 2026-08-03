@@ -102,6 +102,21 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
             "Equipment dialog detected, but arrow direction is unclear; "
             "no action taken"
         ),
+        "log.equipment_affix_equip": (
+            "Equipment affixes: current {current} -> new {new}; "
+            "the new equipment is strictly better, so equip it"
+        ),
+        "log.equipment_affix_sell": (
+            "Equipment affixes: current {current} -> new {new}; "
+            "the new equipment is not strictly better, so sell it"
+        ),
+        "log.equipment_affix_unclear": (
+            "Equipment affix OCR is unclear; no action taken for safety"
+        ),
+        "equipment_affix.dual": "Crit Rate + Skill Crit Rate",
+        "equipment_affix.crit": "Crit Rate",
+        "equipment_affix.skill_crit": "Skill Crit Rate",
+        "equipment_affix.none": "No crit-rate affixes",
         "log.task_ocr_failed": "Task OCR failed: {error}",
         "special.support_digimon": "Draw support-type Digimon",
         "special.skill_card": "Draw skill cards",
@@ -255,6 +270,21 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "log.equipment_unknown": (
             "检测到装备弹窗，但箭头方向不明确；保持不动"
         ),
+        "log.equipment_affix_equip": (
+            "装备词条：当前 {current} → 新装备 {new}；"
+            "新装备优先级严格更高，执行装备"
+        ),
+        "log.equipment_affix_sell": (
+            "装备词条：当前 {current} → 新装备 {new}；"
+            "新装备优先级不更高，出售新装备"
+        ),
+        "log.equipment_affix_unclear": (
+            "装备词条 OCR 无法可靠读取；为安全起见保持不动"
+        ),
+        "equipment_affix.dual": "暴击发生率 + 技能暴击发生率",
+        "equipment_affix.crit": "暴击发生率",
+        "equipment_affix.skill_crit": "技能暴击发生率",
+        "equipment_affix.none": "无暴击相关词条",
         "log.task_ocr_failed": "任务 OCR 失败：{error}",
         "special.support_digimon": "抽取支援型数码宝贝",
         "special.skill_card": "抽取技能卡片",
@@ -397,6 +427,21 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "log.equipment_unknown": (
             "偵測到裝備彈窗，但箭頭方向不明確；保持不動"
         ),
+        "log.equipment_affix_equip": (
+            "裝備詞條：目前 {current} → 新裝備 {new}；"
+            "新裝備優先級嚴格更高，執行裝備"
+        ),
+        "log.equipment_affix_sell": (
+            "裝備詞條：目前 {current} → 新裝備 {new}；"
+            "新裝備優先級不更高，出售新裝備"
+        ),
+        "log.equipment_affix_unclear": (
+            "裝備詞條 OCR 無法可靠讀取；為安全起見保持不動"
+        ),
+        "equipment_affix.dual": "暴擊發生率 + 技能暴擊發生率",
+        "equipment_affix.crit": "暴擊發生率",
+        "equipment_affix.skill_crit": "技能暴擊發生率",
+        "equipment_affix.none": "無暴擊相關詞條",
         "log.task_ocr_failed": "任務 OCR 失敗：{error}",
         "special.support_digimon": "抽取支援型數碼寶貝",
         "special.skill_card": "抽取技能卡片",
@@ -551,6 +596,21 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
             "装備ダイアログを検出しましたが矢印の方向が不明なため、"
             "操作しません"
         ),
+        "log.equipment_affix_equip": (
+            "装備効果：現在 {current} → 新規 {new}。"
+            "新しい装備の優先度が厳密に高いため、装備します"
+        ),
+        "log.equipment_affix_sell": (
+            "装備効果：現在 {current} → 新規 {new}。"
+            "新しい装備の優先度が高くないため、売却します"
+        ),
+        "log.equipment_affix_unclear": (
+            "装備効果のOCRが不明確なため、安全のため操作しません"
+        ),
+        "equipment_affix.dual": "クリティカル発生率 + スキルクリティカル発生率",
+        "equipment_affix.crit": "クリティカル発生率",
+        "equipment_affix.skill_crit": "スキルクリティカル発生率",
+        "equipment_affix.none": "クリティカル系効果なし",
         "log.task_ocr_failed": "ミッションOCRに失敗：{error}",
         "special.support_digimon": "支援型デジモンを引く",
         "special.skill_card": "スキルカードを引く",

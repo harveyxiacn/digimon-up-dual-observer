@@ -15,11 +15,35 @@ from digimon_monitor.i18n import (
 )
 
 
+EQUIPMENT_AFFIX_KEYS = {
+    "log.equipment_affix_equip",
+    "log.equipment_affix_sell",
+    "log.equipment_affix_unclear",
+    "equipment_affix.dual",
+    "equipment_affix.crit",
+    "equipment_affix.skill_crit",
+    "equipment_affix.none",
+}
+
+
 def test_all_languages_have_the_same_translation_keys() -> None:
     expected = set(TRANSLATIONS["en"])
     assert set(TRANSLATIONS) == SUPPORTED_LANGUAGES
     for language, translations in TRANSLATIONS.items():
         assert set(translations) == expected, language
+
+
+def test_equipment_affix_messages_are_defined_in_every_language() -> None:
+    """The no-arrow equipment fallback must be localizable, not an English key fallback."""
+    for language, translations in TRANSLATIONS.items():
+        assert EQUIPMENT_AFFIX_KEYS <= set(translations), language
+        for key in EQUIPMENT_AFFIX_KEYS:
+            rendered = Translator(language)(
+                key,
+                current="current",
+                new="new",
+            )
+            assert rendered and rendered != key, (language, key)
 
 
 def test_all_languages_preserve_format_placeholders() -> None:
