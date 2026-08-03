@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "digimon-up-monitor"
-version = "0.2.1"
+version = "0.2.2"
 description = "Digimon UP emulator screen monitor and safe automation helper"
 requires-python = ">=3.11"
 dependencies = [

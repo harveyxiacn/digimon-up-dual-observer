@@ -15,6 +15,12 @@ import numpy as np
 from .adb import AdbClient, AdbDevice
 from .config import AppConfig
 from .discord_notifier import DiscordNotifier
+from .equipment import (
+    EquipmentDecision,
+    EquipmentPriority,
+    decide_equipment,
+    equipment_priority,
+)
 from .i18n import Translator
 from .ocr import OcrEngine
 from .vision import (
@@ -153,7 +159,13 @@ class DeviceMonitor(threading.Thread):
         self.cooldowns = Cooldowns()
         self.next_task_ocr = 0.0
         self.next_dialog_ocr = 0.0
+        self.next_equipment_ocr = 0.0
         self.next_action_at = 0.0
+        self.equipment_decision = EquipmentDecision.NO_ACTION
+        self.equipment_priorities: tuple[
+            EquipmentPriority,
+            EquipmentPriority,
+        ] | None = None
         self.last_task_text = ""
         self.last_observation = ""
         self.failure_count = 0
@@ -225,6 +237,9 @@ class DeviceMonitor(threading.Thread):
         self.next_action_at = now + self.config.monitor.action_cooldown_seconds
         self.last_observation = ""
         self.stable.reset()
+        self.equipment_decision = EquipmentDecision.NO_ACTION
+        self.equipment_priorities = None
+        self.next_equipment_ocr = 0.0
         self._log(
             "info",
             self.tr(
@@ -251,14 +266,80 @@ class DeviceMonitor(threading.Thread):
 
         equipment = result.equipment_state
         if equipment is not EquipmentState.NONE:
-            stable_count = self.stable.update(f"equipment:{equipment.value}")
             if equipment is EquipmentState.UNKNOWN:
-                if stable_count == 1:
-                    self._log(
-                        "warning",
-                        self.tr("log.equipment_unknown"),
+                if now >= self.next_equipment_ocr:
+                    try:
+                        current_text, new_text = (
+                            self.ocr.read_equipment_attributes(frame)
+                        )
+                        self.equipment_decision = decide_equipment(
+                            current_text,
+                            new_text,
+                        )
+                        current_priority = equipment_priority(current_text)
+                        new_priority = equipment_priority(new_text)
+                        self.equipment_priorities = (
+                            (current_priority, new_priority)
+                            if current_priority is not None
+                            and new_priority is not None
+                            else None
+                        )
+                        self.next_equipment_ocr = (
+                            now
+                            + self.config.monitor.dialog_ocr_interval_seconds
+                        )
+                    except Exception as exc:
+                        self.equipment_decision = EquipmentDecision.NO_ACTION
+                        self.equipment_priorities = None
+                        self.next_equipment_ocr = (
+                            now
+                            + self.config.monitor.dialog_ocr_interval_seconds
+                        )
+                        self._log(
+                            "warning",
+                            self.tr("log.dialog_ocr_failed", error=exc),
+                        )
+                decision = self.equipment_decision
+                stable_count = self.stable.update(
+                    f"equipment:unknown:{decision.value}"
+                )
+                if decision is EquipmentDecision.NO_ACTION:
+                    if stable_count == 1:
+                        self._log(
+                            "warning",
+                            self.tr("log.equipment_affix_unclear"),
+                        )
+                    return
+                if stable_count < self.config.monitor.stable_frames_before_click:
+                    return
+                if decision is EquipmentDecision.EQUIP and result.equip_click:
+                    if (
+                        stable_count
+                        == self.config.monitor.stable_frames_before_click
+                    ):
+                        self._log_equipment_affix_decision(decision)
+                    self._tap(
+                        frame,
+                        result.equip_click,
+                        self.tr("action.equip"),
+                        "equip_attribute_better",
+                        now,
+                    )
+                elif decision is EquipmentDecision.SELL and result.sell_click:
+                    if (
+                        stable_count
+                        == self.config.monitor.stable_frames_before_click
+                    ):
+                        self._log_equipment_affix_decision(decision)
+                    self._tap(
+                        frame,
+                        result.sell_click,
+                        self.tr("action.sell"),
+                        "sell_attribute_not_better",
+                        now,
                     )
                 return
+            stable_count = self.stable.update(f"equipment:{equipment.value}")
             if stable_count < self.config.monitor.stable_frames_before_click:
                 return
             if equipment is EquipmentState.WORSE and result.sell_click:
@@ -278,6 +359,12 @@ class DeviceMonitor(threading.Thread):
                     now,
                 )
             return
+
+        # Do not reuse a comparison after its popup has disappeared.  The next
+        # unknown popup gets a fresh OCR pass even when it appears soon after.
+        self.equipment_decision = EquipmentDecision.NO_ACTION
+        self.equipment_priorities = None
+        self.next_equipment_ocr = 0.0
 
         food_prompt_ready = self.food_prompt_latch.update(
             result.food_prompt
@@ -384,6 +471,31 @@ class DeviceMonitor(threading.Thread):
                 )
         else:
             self.stable.update(None)
+
+    def _log_equipment_affix_decision(
+        self,
+        decision: EquipmentDecision,
+    ) -> None:
+        if self.equipment_priorities is None:
+            return
+        current_priority, new_priority = self.equipment_priorities
+        key = (
+            "log.equipment_affix_equip"
+            if decision is EquipmentDecision.EQUIP
+            else "log.equipment_affix_sell"
+        )
+        self._log(
+            "info",
+            self.tr(
+                key,
+                current=self.tr(
+                    f"equipment_affix.{current_priority.name.lower()}"
+                ),
+                new=self.tr(
+                    f"equipment_affix.{new_priority.name.lower()}"
+                ),
+            ),
+        )
 
     def run(self) -> None:
         self.emit_status(self.device.serial, "LINKING")

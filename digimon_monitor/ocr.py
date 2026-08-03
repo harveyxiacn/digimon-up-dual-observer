@@ -95,3 +95,18 @@ class OcrEngine:
             lang=self.language,
             config="--psm 11",
         ).strip()
+
+    def read_equipment_attributes(self, frame: np.ndarray) -> tuple[str, str]:
+        """Read the current (upper) and new (lower) item panels separately."""
+        panels = (
+            self._crop(frame, 0.16, 0.285, 0.84, 0.535),
+            self._crop(frame, 0.16, 0.55, 0.84, 0.80),
+        )
+        return tuple(
+            pytesseract.image_to_string(
+                self._upscale(panel, 2.2),
+                lang=self.language,
+                config="--psm 6",
+            ).strip()
+            for panel in panels
+        )
