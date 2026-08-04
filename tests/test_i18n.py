@@ -25,12 +25,66 @@ EQUIPMENT_AFFIX_KEYS = {
     "equipment_affix.none",
 }
 
+FEATURE_KEYS = {
+    "automation.master",
+    "automation.task",
+    "automation.equipment",
+    "automation.food",
+    "automation.discord",
+    "automation.hint",
+    "discord.clear",
+    "discord.testing",
+    "discord.status.ready",
+    "discord.status.missing",
+    "discord.status.invalid",
+    "discord.status.paused",
+    "webhook.label",
+    "webhook.placeholder",
+    "log.feature_mode",
+    "log.discord_deferred",
+    "feature.task",
+    "feature.equipment",
+    "feature.food",
+    "feature.discord",
+    "state.enabled",
+    "state.disabled",
+    "error.discord_rate_limited",
+    "error.discord_suspended",
+}
+
 
 def test_all_languages_have_the_same_translation_keys() -> None:
     expected = set(TRANSLATIONS["en"])
     assert set(TRANSLATIONS) == SUPPORTED_LANGUAGES
     for language, translations in TRANSLATIONS.items():
         assert set(translations) == expected, language
+
+
+def test_feature_switch_and_discord_status_keys_are_localized() -> None:
+    for language, translations in TRANSLATIONS.items():
+        assert FEATURE_KEYS <= set(translations), language
+        for key in FEATURE_KEYS:
+            rendered = Translator(language)(
+                key,
+                feature="feature",
+                state="state",
+                seconds=5,
+            )
+            assert rendered and rendered != key, (language, key)
+
+
+def test_discord_errors_do_not_leak_raw_details() -> None:
+    formatter = Formatter()
+    assert {
+        field_name
+        for _, field_name, _, _ in formatter.parse(TRANSLATIONS["en"]["error.discord_connect"])
+        if field_name
+    } == set()
+    assert {
+        field_name
+        for _, field_name, _, _ in formatter.parse(TRANSLATIONS["en"]["error.discord_http"])
+        if field_name
+    } == {"status"}
 
 
 def test_equipment_affix_messages_are_defined_in_every_language() -> None:

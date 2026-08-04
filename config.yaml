@@ -7,6 +7,12 @@ monitor:
   automation_enabled: true
   save_action_screenshots: true
 
+features:
+  task_monitoring_enabled: true
+  equipment_automation_enabled: true
+  food_prompt_automation_enabled: true
+  discord_notifications_enabled: true
+
 notifications:
   special_task_cooldown_seconds: 21600
   ticket_cooldown_seconds: 900

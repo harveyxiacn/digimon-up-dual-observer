@@ -25,6 +25,10 @@ A Windows screen monitor and safe automation helper for Digimon UP running in po
 - Automatic clicks can be disabled at any time for observation-only mode.
 - UI, runtime logs, dialogs, main errors, and Discord notifications support Simplified Chinese, Traditional Chinese, English, and Japanese.
 
+### Independent automation switches
+
+The **master** switch gates every ADB tap (off = observation mode). Four feature switches can be changed independently and persist locally: **task monitoring & claiming**, **equipment handling**, **food-bubble clicks**, and **automatic Discord notifications**. A long-running task can be paused without stopping the other features and resumed later. The manual Discord **Test** button always sends when a valid Webhook is configured, even if automatic notifications are paused.
+
 ## Install and run
 
 With dependencies already installed:
@@ -88,6 +92,8 @@ Configure the Webhook in either of these ways:
 2. Copy `.env.example` to `.env` and set `DIGIMON_DISCORD_WEBHOOK_URL`.
 
 `.env`, `config.local.yaml`, `captures/`, and `logs/` are excluded by `.gitignore`. Never place a real Webhook in `config.yaml`, source code, issues, screenshots, or commits. Delete and regenerate a Webhook immediately if it becomes public.
+
+The completed Discord path captures the current emulator screenshot, adds the device label and OCR/task context when available, and posts it as an attachment. A first event can notify immediately; duplicate events respect their cooldown, and failures are deferred before retrying. Discord rate limits and invalid/deleted Webhooks temporarily suppress repeated sends. Clearing the Webhook field removes the locally saved secret. `.env` is plain text on this machine and must not be shared; OS environment variables take precedence over the UI and `.env`. Screenshots and OCR text can contain game/task data and device labels, so treat Discord and local logs as sensitive.
 
 ## Safety boundaries
 

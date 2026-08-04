@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import replace
 from datetime import datetime
 import logging
 from logging.handlers import RotatingFileHandler
@@ -13,8 +14,8 @@ import cv2
 import numpy as np
 
 from .adb import AdbClient, AdbDevice
-from .config import AppConfig
-from .discord_notifier import DiscordNotifier
+from .config import AppConfig, FeatureSettings
+from .discord_notifier import DiscordError, DiscordNotifier
 from .equipment import (
     EquipmentDecision,
     EquipmentPriority,
@@ -80,13 +81,22 @@ class StableState:
 class Cooldowns:
     def __init__(self) -> None:
         self._last: dict[str, float] = {}
+        self._blocked_until: dict[str, float] = {}
 
     def ready(self, key: str, seconds: float, now: float) -> bool:
-        previous = self._last.get(key, 0.0)
-        return now - previous >= seconds
+        if now < self._blocked_until.get(key, 0.0):
+            return False
+        previous = self._last.get(key)
+        return previous is None or now - previous >= seconds
 
     def mark(self, key: str, now: float) -> None:
         self._last[key] = now
+        self._blocked_until.pop(key, None)
+
+    def defer(self, key: str, seconds: float, now: float) -> None:
+        self._blocked_until[key] = max(
+            self._blocked_until.get(key, 0.0), now + max(0.0, seconds)
+        )
 
 
 class ReappearingPromptLatch:
@@ -128,6 +138,7 @@ class DeviceMonitor(threading.Thread):
         adb: AdbClient,
         notifier: DiscordNotifier,
         automation_enabled: Callable[[], bool],
+        features_snapshot: Callable[[], FeatureSettings],
         stop_event: threading.Event,
         logger: logging.Logger,
         log_callback: LogCallback,
@@ -144,6 +155,7 @@ class DeviceMonitor(threading.Thread):
         self.adb = adb
         self.notifier = notifier
         self.automation_enabled = automation_enabled
+        self.features_snapshot = features_snapshot
         self.stop_event = stop_event
         self.logger = logger
         self.emit_log = log_callback
@@ -152,7 +164,11 @@ class DeviceMonitor(threading.Thread):
         self.tr = translator
         self.vision = VisionAnalyzer(config.vision)
         self.ocr = OcrEngine(config.ocr)
-        self.stable = StableState()
+        # Task and equipment modal observations must not inherit each other's
+        # stable-frame count. `stable` remains an alias for legacy callers.
+        self.task_stable = StableState()
+        self.equipment_stable = StableState()
+        self.stable = self.task_stable
         self.food_prompt_latch = ReappearingPromptLatch(
             config.monitor.stable_frames_before_click
         )
@@ -199,6 +215,10 @@ class DeviceMonitor(threading.Thread):
         frame: np.ndarray,
         now: float,
     ) -> None:
+        # Recheck immediately before the external side effect. A UI toggle may
+        # have changed since this frame's feature snapshot was captured.
+        if not self._feature_snapshot().discord_notifications_enabled:
+            return
         if not self.cooldowns.ready(key, cooldown_seconds, now):
             return
         try:
@@ -206,8 +226,41 @@ class DeviceMonitor(threading.Thread):
             self.cooldowns.mark(key, now)
             self._save_frame(frame, key.replace(":", "_"))
             self._log("info", self.tr("log.discord_sent", message=message))
-        except Exception as exc:
-            self._log("error", str(exc))
+        except DiscordError as exc:
+            retry_after = getattr(exc, "retry_after_seconds", 0)
+            try:
+                retry_after_seconds = float(retry_after)
+            except (TypeError, ValueError):
+                retry_after_seconds = 0.0
+            failure_backoff = max(60.0, retry_after_seconds)
+            if exc.permanent:
+                failure_backoff = max(failure_backoff, 900.0)
+            self.cooldowns.defer(key, failure_backoff, now)
+            self._log(
+                "warning",
+                self.tr(
+                    "log.discord_deferred",
+                    seconds=int(failure_backoff),
+                ),
+            )
+        except Exception:
+            self.cooldowns.defer(key, 60.0, now)
+            self._log(
+                "warning",
+                self.tr("log.discord_deferred", seconds=60),
+            )
+
+    def _feature_snapshot(self) -> FeatureSettings:
+        callback = getattr(self, "features_snapshot", None)
+        if callback is not None:
+            return callback()
+        return getattr(self.config, "features", FeatureSettings())
+
+    def _task_state(self) -> StableState:
+        return getattr(self, "task_stable", self.stable)
+
+    def _equipment_state(self) -> StableState:
+        return getattr(self, "equipment_stable", self.stable)
 
     def _tap(
         self,
@@ -236,7 +289,8 @@ class DeviceMonitor(threading.Thread):
         self._save_frame(frame, event_name)
         self.next_action_at = now + self.config.monitor.action_cooldown_seconds
         self.last_observation = ""
-        self.stable.reset()
+        self._task_state().reset()
+        self._equipment_state().reset()
         self.equipment_decision = EquipmentDecision.NO_ACTION
         self.equipment_priorities = None
         self.next_equipment_ocr = 0.0
@@ -251,9 +305,13 @@ class DeviceMonitor(threading.Thread):
         return True
 
     def _handle_frame(self, frame: np.ndarray, now: float) -> None:
+        features = self._feature_snapshot()
         result = self.vision.analyze(frame)
         if result.reward_popup:
-            stable_count = self.stable.update("reward:close")
+            if not features.task_monitoring_enabled:
+                self._task_state().reset()
+                return
+            stable_count = self._task_state().update("reward:close")
             if stable_count >= self.config.monitor.stable_frames_before_click:
                 self._tap(
                     frame,
@@ -266,6 +324,12 @@ class DeviceMonitor(threading.Thread):
 
         equipment = result.equipment_state
         if equipment is not EquipmentState.NONE:
+            if not features.equipment_automation_enabled:
+                self.equipment_decision = EquipmentDecision.NO_ACTION
+                self.equipment_priorities = None
+                self.next_equipment_ocr = 0.0
+                self._equipment_state().reset()
+                return
             if equipment is EquipmentState.UNKNOWN:
                 if now >= self.next_equipment_ocr:
                     try:
@@ -300,7 +364,7 @@ class DeviceMonitor(threading.Thread):
                             self.tr("log.dialog_ocr_failed", error=exc),
                         )
                 decision = self.equipment_decision
-                stable_count = self.stable.update(
+                stable_count = self._equipment_state().update(
                     f"equipment:unknown:{decision.value}"
                 )
                 if decision is EquipmentDecision.NO_ACTION:
@@ -339,7 +403,7 @@ class DeviceMonitor(threading.Thread):
                         now,
                     )
                 return
-            stable_count = self.stable.update(f"equipment:{equipment.value}")
+            stable_count = self._equipment_state().update(f"equipment:{equipment.value}")
             if stable_count < self.config.monitor.stable_frames_before_click:
                 return
             if equipment is EquipmentState.WORSE and result.sell_click:
@@ -365,11 +429,16 @@ class DeviceMonitor(threading.Thread):
         self.equipment_decision = EquipmentDecision.NO_ACTION
         self.equipment_priorities = None
         self.next_equipment_ocr = 0.0
+        self._equipment_state().reset()
 
         food_prompt_ready = self.food_prompt_latch.update(
             result.food_prompt
         )
-        if food_prompt_ready and result.food_click:
+        if (
+            features.food_prompt_automation_enabled
+            and food_prompt_ready
+            and result.food_click
+        ):
             handled = self._tap(
                 frame,
                 result.food_click,
@@ -379,6 +448,38 @@ class DeviceMonitor(threading.Thread):
             )
             if handled:
                 self.food_prompt_latch.mark_handled()
+            return
+
+        # Ticket OCR is a Discord concern, not a task-monitoring concern.
+        if not features.discord_notifications_enabled:
+            self.next_dialog_ocr = 0.0
+        elif now >= self.next_dialog_ocr:
+            try:
+                dialog_text = self.ocr.read_dialog(frame)
+                self.next_dialog_ocr = (
+                    now + self.config.monitor.dialog_ocr_interval_seconds
+                )
+                if (
+                    is_ticket_insufficient(dialog_text)
+                    and features.discord_notifications_enabled
+                ):
+                    self._notify(
+                        "ticket:insufficient",
+                        self.config.notifications.ticket_cooldown_seconds,
+                        self.tr("notify.ticket", label=self.label),
+                        frame,
+                        now,
+                    )
+            except Exception as exc:
+                self._log(
+                    "warning",
+                    self.tr("log.dialog_ocr_failed", error=exc),
+                )
+
+        if not features.task_monitoring_enabled:
+            self._task_state().reset()
+            self.last_task_text = ""
+            self.next_task_ocr = 0.0
             return
 
         task_text = self.last_task_text
@@ -396,7 +497,7 @@ class DeviceMonitor(threading.Thread):
                 )
 
         special_task_key = classify_special_task(task_text)
-        if special_task_key:
+        if special_task_key and features.discord_notifications_enabled:
             special_task = self.tr(f"special.{special_task_key}")
             self._notify(
                 f"special:{special_task_key}",
@@ -411,28 +512,8 @@ class DeviceMonitor(threading.Thread):
                 now,
             )
 
-        if now >= self.next_dialog_ocr:
-            try:
-                dialog_text = self.ocr.read_dialog(frame)
-                self.next_dialog_ocr = (
-                    now + self.config.monitor.dialog_ocr_interval_seconds
-                )
-                if is_ticket_insufficient(dialog_text):
-                    self._notify(
-                        "ticket:insufficient",
-                        self.config.notifications.ticket_cooldown_seconds,
-                        self.tr("notify.ticket", label=self.label),
-                        frame,
-                        now,
-                    )
-            except Exception as exc:
-                self._log(
-                    "warning",
-                    self.tr("log.dialog_ocr_failed", error=exc),
-                )
-
         if result.task_incomplete:
-            stable_count = self.stable.update("task:incomplete")
+            stable_count = self._task_state().update("task:incomplete")
             if stable_count == self.config.monitor.stable_frames_before_click:
                 self._log(
                     "info",
@@ -441,7 +522,7 @@ class DeviceMonitor(threading.Thread):
             return
 
         if result.task_complete:
-            stable_count = self.stable.update("task:complete")
+            stable_count = self._task_state().update("task:complete")
             if special_task_key:
                 return
             if not task_text.strip():
@@ -470,7 +551,7 @@ class DeviceMonitor(threading.Thread):
                     now,
                 )
         else:
-            self.stable.update(None)
+            self._task_state().update(None)
 
     def _log_equipment_affix_decision(
         self,
@@ -560,6 +641,7 @@ class MonitorController:
         self.tr = translator or Translator(config.ui.language)
         self.logger = build_logger(config.project_dir)
         self._automation_enabled = config.monitor.automation_enabled
+        self._features = config.features
         self._state_lock = threading.Lock()
         self._stop_event = threading.Event()
         self._workers: list[DeviceMonitor] = []
@@ -575,12 +657,38 @@ class MonitorController:
     def set_automation_enabled(self, enabled: bool) -> None:
         with self._state_lock:
             self._automation_enabled = enabled
+            self.config.monitor.automation_enabled = enabled
         mode = self.tr(
             "mode.automation" if enabled else "mode.observation"
         )
         self.log_callback(
             "info",
             self.tr("log.automation_mode", mode=mode),
+        )
+
+    def features_snapshot(self) -> FeatureSettings:
+        with self._state_lock:
+            return self._features
+
+    def set_features(self, features: FeatureSettings) -> None:
+        with self._state_lock:
+            self._features = features
+            self.config.features = features
+
+    def set_feature_enabled(self, name: str, enabled: bool) -> None:
+        if name not in FeatureSettings.__dataclass_fields__:
+            raise ValueError(f"Unknown feature setting: {name}")
+        self.set_features(replace(self.features_snapshot(), **{name: enabled}))
+        feature_keys = {
+            "task_monitoring_enabled": "feature.task",
+            "equipment_automation_enabled": "feature.equipment",
+            "food_prompt_automation_enabled": "feature.food",
+            "discord_notifications_enabled": "feature.discord",
+        }
+        feature = self.tr(feature_keys[name])
+        state = self.tr("state.enabled" if enabled else "state.disabled")
+        self.log_callback(
+            "info", self.tr("log.feature_mode", feature=feature, state=state)
         )
 
     def start(self, devices: list[AdbDevice]) -> None:
@@ -594,6 +702,7 @@ class MonitorController:
                 adb=self.adb,
                 notifier=self.notifier,
                 automation_enabled=self.automation_enabled,
+                features_snapshot=self.features_snapshot,
                 stop_event=self._stop_event,
                 logger=self.logger,
                 log_callback=self.log_callback,

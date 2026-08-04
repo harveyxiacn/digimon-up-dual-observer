@@ -22,6 +22,20 @@ class MonitorSettings:
     save_action_screenshots: bool = True
 
 
+@dataclass(frozen=True, slots=True)
+class FeatureSettings:
+    """Runtime-selectable monitoring capabilities.
+
+    This is deliberately immutable: monitors receive a complete snapshot for a
+    frame instead of observing a partially changed collection of flags.
+    """
+
+    task_monitoring_enabled: bool = True
+    equipment_automation_enabled: bool = True
+    food_prompt_automation_enabled: bool = True
+    discord_notifications_enabled: bool = True
+
+
 @dataclass(slots=True)
 class NotificationSettings:
     special_task_cooldown_seconds: float = 21600
@@ -61,6 +75,7 @@ class UiSettings:
 @dataclass(slots=True)
 class AppConfig:
     monitor: MonitorSettings = field(default_factory=MonitorSettings)
+    features: FeatureSettings = field(default_factory=FeatureSettings)
     notifications: NotificationSettings = field(default_factory=NotificationSettings)
     ocr: OcrSettings = field(default_factory=OcrSettings)
     adb: AdbSettings = field(default_factory=AdbSettings)
@@ -98,6 +113,25 @@ def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any
     return merged
 
 
+def _strict_bool(value: str | None, default: bool) -> bool:
+    """Apply only explicit true/false environment values.
+
+    Ignoring malformed values avoids a typo unexpectedly disabling automation.
+    """
+    if value is None:
+        return default
+    normalized = value.strip().lower()
+    if normalized == "true":
+        return True
+    if normalized == "false":
+        return False
+    return default
+
+
+def _env_value(dotenv: dict[str, str], key: str) -> str | None:
+    return os.environ[key] if key in os.environ else dotenv.get(key)
+
+
 def load_config(project_dir: Path = PROJECT_DIR) -> AppConfig:
     data: dict[str, Any] = {}
     for filename in ("config.yaml", "config.local.yaml"):
@@ -108,17 +142,28 @@ def load_config(project_dir: Path = PROJECT_DIR) -> AppConfig:
                 data = _deep_merge(data, loaded)
 
     dotenv = _read_dotenv(project_dir / ".env")
-    webhook = os.environ.get(
-        "DIGIMON_DISCORD_WEBHOOK_URL",
-        dotenv.get("DIGIMON_DISCORD_WEBHOOK_URL", ""),
-    )
+    webhook = _env_value(dotenv, "DIGIMON_DISCORD_WEBHOOK_URL") or ""
     ui = UiSettings(**_section(data, "ui"))
-    ui.language = os.environ.get(
-        "DIGIMON_UI_LANGUAGE",
-        dotenv.get("DIGIMON_UI_LANGUAGE", ui.language),
+    ui.language = _env_value(dotenv, "DIGIMON_UI_LANGUAGE") or ui.language
+    monitor = MonitorSettings(**_section(data, "monitor"))
+    monitor.automation_enabled = _strict_bool(
+        _env_value(dotenv, "DIGIMON_AUTOMATION_ENABLED"),
+        monitor.automation_enabled,
     )
+    features = FeatureSettings(**_section(data, "features"))
+    feature_env_names = {
+        "task_monitoring_enabled": "DIGIMON_TASK_MONITORING_ENABLED",
+        "equipment_automation_enabled": "DIGIMON_EQUIPMENT_AUTOMATION_ENABLED",
+        "food_prompt_automation_enabled": "DIGIMON_FOOD_PROMPT_AUTOMATION_ENABLED",
+        "discord_notifications_enabled": "DIGIMON_DISCORD_NOTIFICATIONS_ENABLED",
+    }
+    feature_values = {
+        field_name: _strict_bool(_env_value(dotenv, env_name), getattr(features, field_name))
+        for field_name, env_name in feature_env_names.items()
+    }
     return AppConfig(
-        monitor=MonitorSettings(**_section(data, "monitor")),
+        monitor=monitor,
+        features=FeatureSettings(**feature_values),
         notifications=NotificationSettings(**_section(data, "notifications")),
         ocr=OcrSettings(**_section(data, "ocr")),
         adb=AdbSettings(**_section(data, "adb")),
@@ -129,26 +174,35 @@ def load_config(project_dir: Path = PROJECT_DIR) -> AppConfig:
     )
 
 
-def _save_dotenv_value(project_dir: Path, key: str, value: str) -> None:
+def _save_dotenv_values(project_dir: Path, values: dict[str, str]) -> None:
+    """Atomically replace selected .env keys without disturbing unrelated keys."""
     path = project_dir / ".env"
     lines = (
         path.read_text(encoding="utf-8").splitlines()
         if path.exists()
         else []
     )
-    replacement = f"{key}={value.strip()}"
-    replaced = False
+    replacements = {key: f"{key}={value.strip()}" for key, value in values.items()}
+    replaced = set[str]()
     updated: list[str] = []
     for line in lines:
-        if line.strip().startswith(f"{key}="):
-            if not replaced:
-                updated.append(replacement)
-                replaced = True
+        key = line.split("=", 1)[0].strip() if "=" in line else ""
+        if key in replacements:
+            if key not in replaced:
+                updated.append(replacements[key])
+                replaced.add(key)
         else:
             updated.append(line)
-    if not replaced:
-        updated.append(replacement)
-    path.write_text("\n".join(updated).rstrip() + "\n", encoding="utf-8")
+    for key, replacement in replacements.items():
+        if key not in replaced:
+            updated.append(replacement)
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    temporary.write_text("\n".join(updated).rstrip() + "\n", encoding="utf-8")
+    temporary.replace(path)
+
+
+def _save_dotenv_value(project_dir: Path, key: str, value: str) -> None:
+    _save_dotenv_values(project_dir, {key: value})
 
 
 def save_webhook(project_dir: Path, webhook_url: str) -> None:
@@ -161,3 +215,21 @@ def save_webhook(project_dir: Path, webhook_url: str) -> None:
 
 def save_ui_language(project_dir: Path, language: str) -> None:
     _save_dotenv_value(project_dir, "DIGIMON_UI_LANGUAGE", language)
+
+
+def save_monitor_preferences(
+    project_dir: Path,
+    monitor: MonitorSettings,
+    features: FeatureSettings,
+) -> None:
+    """Persist all runtime switches together, so they cannot be half-saved."""
+    _save_dotenv_values(
+        project_dir,
+        {
+            "DIGIMON_AUTOMATION_ENABLED": str(monitor.automation_enabled).lower(),
+            "DIGIMON_TASK_MONITORING_ENABLED": str(features.task_monitoring_enabled).lower(),
+            "DIGIMON_EQUIPMENT_AUTOMATION_ENABLED": str(features.equipment_automation_enabled).lower(),
+            "DIGIMON_FOOD_PROMPT_AUTOMATION_ENABLED": str(features.food_prompt_automation_enabled).lower(),
+            "DIGIMON_DISCORD_NOTIFICATIONS_ENABLED": str(features.discord_notifications_enabled).lower(),
+        },
+    )
