@@ -29,12 +29,35 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "discord.test": "Send test signal",
         "group.protocol": "03 // Automation Protocol",
         "automation.enable": "Enable automatic clicks",
+        "automation.master": "Master auto-click (all ADB taps)",
+        "automation.task": "Task monitoring & claiming",
+        "automation.equipment": "Automatic equipment handling",
+        "automation.food": "Auto-click food bubbles",
+        "automation.discord": "Automatic Discord notifications",
+        "automation.hint": (
+            "Master switch controls all ADB clicks; feature switches can be paused independently."
+        ),
+        "discord.clear": "Clear saved webhook",
+        "discord.testing": "Sending test signal…",
+        "discord.status.ready": "Ready",
+        "discord.status.missing": "Webhook not configured",
+        "discord.status.invalid": "Webhook URL is invalid",
+        "discord.status.paused": "Automatic notifications paused",
+        "webhook.label": "WEBHOOK URL",
+        "webhook.placeholder": "https://discord.com/api/webhooks/...",
+        "log.feature_mode": "[SYSTEM] {feature}: {state}",
+        "feature.task": "Task monitoring",
+        "feature.equipment": "Equipment handling",
+        "feature.food": "Food bubble clicks",
+        "feature.discord": "Discord notifications",
+        "state.enabled": "enabled",
+        "state.disabled": "disabled",
         "protocol.text": (
-            "[OK] Green frame + green current count → Claim\n"
-            "[OK] White food bubble → Tap once\n"
-            "[OK] Green up arrow → Equip, then sell old item\n"
-            "[OK] Red down arrow → Sell\n"
-            "[!] Special draw / ticket shortage → Discord"
+            "[MASTER] Master switch gates every ADB click (observation mode when off)\n"
+            "[TASK] Green frame + green count → Claim (independent switch)\n"
+            "[EQUIP] Green up arrow → Equip/sell old item (independent switch)\n"
+            "[FOOD] White food bubble → Tap once (independent switch)\n"
+            "[DISCORD] Special draw / ticket shortage → Notify (independent switch)"
         ),
         "preview.single": "LIVE // SINGLE CHANNEL",
         "preview.multi": "LIVE // MULTI CHANNEL",
@@ -89,6 +112,9 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "action.stop": "STOP",
         "language.changed": "[SYSTEM] Language changed to {language}",
         "log.discord_sent": "Discord notification sent: {message}",
+        "log.discord_deferred": (
+            "Discord notification failed; retry deferred for {seconds} seconds"
+        ),
         "log.observe_action": (
             "Observation mode: detected “{action}”; click {point} was not sent"
         ),
@@ -157,8 +183,10 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "error.adb_negative_tap": "Refusing a tap with negative coordinates",
         "error.webhook_missing": "Discord Webhook is not configured",
         "error.webhook_invalid": "Discord Webhook URL is invalid",
-        "error.discord_connect": "Discord connection failed: {error}",
-        "error.discord_http": "Discord returned HTTP {status}{detail}",
+        "error.discord_connect": "Discord connection failed",
+        "error.discord_http": "Discord returned HTTP {status}",
+        "error.discord_rate_limited": "Discord rate limited; retry in {seconds}s",
+        "error.discord_suspended": "Discord notifications temporarily suspended",
         "emulator.bluestacks.name": "BlueStacks",
         "emulator.bluestacks.hint": (
             "Settings → Advanced → enable Android Debug Bridge (ADB), "
@@ -201,12 +229,33 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "discord.test": "发送测试信号",
         "group.protocol": "03 // 自动处理协议",
         "automation.enable": "启用自动点击",
+        "automation.master": "总开关（所有 ADB 点击）",
+        "automation.task": "任务监控与领取",
+        "automation.equipment": "装备自动处理",
+        "automation.food": "自动点击食物气泡",
+        "automation.discord": "Discord 自动通知",
+        "automation.hint": "总开关控制所有 ADB 点击；各功能可独立暂停。",
+        "discord.clear": "清除已保存的 Webhook",
+        "discord.testing": "正在发送测试信号…",
+        "discord.status.ready": "已就绪",
+        "discord.status.missing": "尚未配置 Webhook",
+        "discord.status.invalid": "Webhook URL 无效",
+        "discord.status.paused": "自动通知已暂停",
+        "webhook.label": "Webhook 地址",
+        "webhook.placeholder": "https://discord.com/api/webhooks/…",
+        "log.feature_mode": "[SYSTEM] {feature}：{state}",
+        "feature.task": "任务监控",
+        "feature.equipment": "装备处理",
+        "feature.food": "食物气泡点击",
+        "feature.discord": "Discord 通知",
+        "state.enabled": "已启用",
+        "state.disabled": "已停用",
         "protocol.text": (
-            "[OK] 绿色框 + 当前完成数绿色 → 领取\n"
-            "[OK] 白底食物气泡 → 只点击一次\n"
-            "[OK] 绿色上箭头 → 装备后出售旧件\n"
-            "[OK] 红色下箭头 → 出售\n"
-            "[!] 特殊抽卡 / 投影券不足 → Discord"
+            "[总开关] 控制所有 ADB 点击（关闭即观察模式）\n"
+            "[任务] 绿色框 + 完成数绿色 → 领取（可独立开关）\n"
+            "[装备] 绿色上箭头 → 装备/出售旧件（可独立开关）\n"
+            "[食物] 白底食物气泡 → 点击一次（可独立开关）\n"
+            "[Discord] 特殊抽卡 / 投影券不足 → 通知（可独立开关）"
         ),
         "preview.single": "LIVE // 单通道画面",
         "preview.multi": "LIVE // 多通道画面",
@@ -258,6 +307,9 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "action.stop": "停止",
         "language.changed": "[SYSTEM] 界面语言已切换为 {language}",
         "log.discord_sent": "Discord 通知已发送：{message}",
+        "log.discord_deferred": (
+            "Discord 通知发送失败；将在 {seconds} 秒后重试"
+        ),
         "log.observe_action": (
             "观察模式：识别到“{action}”，未执行点击 {point}"
         ),
@@ -319,8 +371,10 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "error.adb_negative_tap": "拒绝负坐标点击",
         "error.webhook_missing": "Discord Webhook 尚未设置",
         "error.webhook_invalid": "Discord Webhook URL 格式不正确",
-        "error.discord_connect": "Discord 连接失败：{error}",
-        "error.discord_http": "Discord 返回 HTTP {status}{detail}",
+        "error.discord_connect": "Discord 连接失败",
+        "error.discord_http": "Discord 返回 HTTP {status}",
+        "error.discord_rate_limited": "Discord 请求受限，请在 {seconds} 秒后重试",
+        "error.discord_suspended": "Discord 通知暂时停用",
         "emulator.bluestacks.name": "BlueStacks",
         "emulator.bluestacks.hint": (
             "设置 → 高级 → 开启“Android 调试(ADB)”，保存并记下端口。"
@@ -358,12 +412,33 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "discord.test": "傳送測試訊號",
         "group.protocol": "03 // 自動處理協定",
         "automation.enable": "啟用自動點擊",
+        "automation.master": "總開關（所有 ADB 點擊）",
+        "automation.task": "任務監控與領取",
+        "automation.equipment": "裝備自動處理",
+        "automation.food": "自動點擊食物氣泡",
+        "automation.discord": "Discord 自動通知",
+        "automation.hint": "總開關控制所有 ADB 點擊；各功能可獨立暫停。",
+        "discord.clear": "清除已儲存的 Webhook",
+        "discord.testing": "正在傳送測試訊號…",
+        "discord.status.ready": "已就緒",
+        "discord.status.missing": "尚未設定 Webhook",
+        "discord.status.invalid": "Webhook URL 無效",
+        "discord.status.paused": "自動通知已暫停",
+        "webhook.label": "Webhook 位址",
+        "webhook.placeholder": "https://discord.com/api/webhooks/…",
+        "log.feature_mode": "[SYSTEM] {feature}：{state}",
+        "feature.task": "任務監控",
+        "feature.equipment": "裝備處理",
+        "feature.food": "食物氣泡點擊",
+        "feature.discord": "Discord 通知",
+        "state.enabled": "已啟用",
+        "state.disabled": "已停用",
         "protocol.text": (
-            "[OK] 綠色框 + 目前完成數綠色 → 領取\n"
-            "[OK] 白底食物氣泡 → 只點擊一次\n"
-            "[OK] 綠色上箭頭 → 裝備後出售舊件\n"
-            "[OK] 紅色下箭頭 → 出售\n"
-            "[!] 特殊抽卡 / 投影券不足 → Discord"
+            "[總開關] 控制所有 ADB 點擊（關閉即觀察模式）\n"
+            "[任務] 綠色框 + 完成數綠色 → 領取（可獨立開關）\n"
+            "[裝備] 綠色上箭頭 → 裝備/出售舊件（可獨立開關）\n"
+            "[食物] 白底食物氣泡 → 點擊一次（可獨立開關）\n"
+            "[Discord] 特殊抽卡 / 投影券不足 → 通知（可獨立開關）"
         ),
         "preview.single": "LIVE // 單通道畫面",
         "preview.multi": "LIVE // 多通道畫面",
@@ -415,6 +490,9 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "action.stop": "停止",
         "language.changed": "[SYSTEM] 介面語言已切換為 {language}",
         "log.discord_sent": "Discord 通知已傳送：{message}",
+        "log.discord_deferred": (
+            "Discord 通知傳送失敗；將於 {seconds} 秒後重試"
+        ),
         "log.observe_action": (
             "觀察模式：識別到「{action}」，未執行點擊 {point}"
         ),
@@ -476,8 +554,10 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "error.adb_negative_tap": "拒絕負座標點擊",
         "error.webhook_missing": "Discord Webhook 尚未設定",
         "error.webhook_invalid": "Discord Webhook URL 格式不正確",
-        "error.discord_connect": "Discord 連線失敗：{error}",
-        "error.discord_http": "Discord 傳回 HTTP {status}{detail}",
+        "error.discord_connect": "Discord 連線失敗",
+        "error.discord_http": "Discord 傳回 HTTP {status}",
+        "error.discord_rate_limited": "Discord 請求受限，請在 {seconds} 秒後重試",
+        "error.discord_suspended": "Discord 通知暫時停用",
         "emulator.bluestacks.name": "BlueStacks",
         "emulator.bluestacks.hint": (
             "設定 → 進階 → 開啟「Android 偵錯(ADB)」，儲存並記下連接埠。"
@@ -516,12 +596,33 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "discord.test": "テスト信号を送信",
         "group.protocol": "03 // 自動処理プロトコル",
         "automation.enable": "自動クリックを有効化",
+        "automation.master": "マスター（すべてのADBクリック）",
+        "automation.task": "ミッション監視と受け取り",
+        "automation.equipment": "装備の自動処理",
+        "automation.food": "食べ物バブルを自動クリック",
+        "automation.discord": "Discord自動通知",
+        "automation.hint": "マスターはすべてのADBクリックを制御。各機能は個別に一時停止できます。",
+        "discord.clear": "保存済みWebhookを消去",
+        "discord.testing": "テスト信号を送信中…",
+        "discord.status.ready": "準備完了",
+        "discord.status.missing": "Webhook未設定",
+        "discord.status.invalid": "Webhook URLが無効",
+        "discord.status.paused": "自動通知を一時停止中",
+        "webhook.label": "Webhook URL",
+        "webhook.placeholder": "https://discord.com/api/webhooks/…",
+        "log.feature_mode": "[SYSTEM] {feature}：{state}",
+        "feature.task": "ミッション監視",
+        "feature.equipment": "装備処理",
+        "feature.food": "食べ物バブルクリック",
+        "feature.discord": "Discord通知",
+        "state.enabled": "有効",
+        "state.disabled": "無効",
         "protocol.text": (
-            "[OK] 緑枠 + 現在の完了数が緑 → 受け取る\n"
-            "[OK] 白い食べ物バブル → 1回だけクリック\n"
-            "[OK] 緑の上矢印 → 装備後、旧装備を売却\n"
-            "[OK] 赤の下矢印 → 売却\n"
-            "[!] 特別ガチャ / チケット不足 → Discord"
+            "[マスター] すべてのADBクリックを制御（オフ時は監視のみ）\n"
+            "[ミッション] 緑枠 + 完了数が緑 → 受け取り（個別スイッチ）\n"
+            "[装備] 緑の上矢印 → 装備/旧装備売却（個別スイッチ）\n"
+            "[食べ物] 白いバブル → 1回クリック（個別スイッチ）\n"
+            "[Discord] 特別ガチャ / チケット不足 → 通知（個別スイッチ）"
         ),
         "preview.single": "LIVE // シングルチャンネル",
         "preview.multi": "LIVE // マルチチャンネル",
@@ -582,6 +683,9 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "action.stop": "停止",
         "language.changed": "[SYSTEM] 表示言語を{language}に変更",
         "log.discord_sent": "Discord通知を送信：{message}",
+        "log.discord_deferred": (
+            "Discord通知の送信に失敗。{seconds}秒後に再試行します"
+        ),
         "log.observe_action": (
             "監視のみ：{action}を検出しましたが、"
             "クリック{point}は実行しませんでした"
@@ -651,8 +755,10 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "error.adb_negative_tap": "負の座標へのクリックを拒否しました",
         "error.webhook_missing": "Discord Webhookが設定されていません",
         "error.webhook_invalid": "Discord Webhook URLの形式が正しくありません",
-        "error.discord_connect": "Discord接続に失敗：{error}",
-        "error.discord_http": "DiscordがHTTP {status}を返しました{detail}",
+        "error.discord_connect": "Discord接続に失敗",
+        "error.discord_http": "DiscordがHTTP {status}を返しました",
+        "error.discord_rate_limited": "Discordレート制限中。{seconds}秒後に再試行してください",
+        "error.discord_suspended": "Discord通知を一時停止しました",
         "emulator.bluestacks.name": "BlueStacks",
         "emulator.bluestacks.hint": (
             "設定 → 詳細設定 → Android Debug Bridge (ADB)を有効にし、"

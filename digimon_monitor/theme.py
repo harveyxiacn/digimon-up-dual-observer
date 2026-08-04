@@ -126,6 +126,10 @@ def stylesheet(font_family: str) -> str:
     QMainWindow, QWidget#Root {{
         background: transparent;
     }}
+    QScrollArea#ControlsScroll, QScrollArea#ControlsScroll > QWidget > QWidget {{
+        background: transparent;
+        border: none;
+    }}
     QLabel#Title {{
         color: {c["cyan"]};
         font-size: 25px;

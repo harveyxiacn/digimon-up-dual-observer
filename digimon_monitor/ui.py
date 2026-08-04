@@ -22,6 +22,8 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPlainTextEdit,
     QPushButton,
+    QScrollArea,
+    QSizePolicy,
     QSplitter,
     QVBoxLayout,
     QWidget,
@@ -31,6 +33,7 @@ from .adb import AdbClient, AdbDevice
 from .config import (
     AppConfig,
     load_config,
+    save_monitor_preferences,
     save_ui_language,
     save_webhook,
 )
@@ -68,6 +71,18 @@ def normalized_selected_serials(
         ][:1]
     limit = 2 if allow_multiple else 1
     return ordered[:limit]
+
+
+def webhook_status_key(webhook_url: str, discord_enabled: bool) -> str:
+    """Return the display-only status key for the Discord webhook controls."""
+    webhook_url = webhook_url.strip()
+    if not webhook_url:
+        return "discord.status.missing"
+    if not DiscordNotifier.is_valid_webhook_url(webhook_url):
+        return "discord.status.invalid"
+    if not discord_enabled:
+        return "discord.status.paused"
+    return "discord.status.ready"
 
 
 class PreviewCard(QFrame):
@@ -233,7 +248,36 @@ class MainWindow(QMainWindow):
 
         splitter = QSplitter(Qt.Horizontal)
         splitter.setChildrenCollapsible(False)
-        controls = self._build_controls()
+        controls = QWidget()
+        controls.setMinimumWidth(350)
+        controls.setMaximumWidth(450)
+        controls_layout = QVBoxLayout(controls)
+        controls_layout.setContentsMargins(0, 0, 8, 0)
+        controls_layout.setSpacing(10)
+
+        controls_panel = self._build_controls()
+        controls_scroll = QScrollArea()
+        controls_scroll.setObjectName("ControlsScroll")
+        controls_scroll.setWidgetResizable(True)
+        controls_scroll.setFrameShape(QFrame.NoFrame)
+        controls_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        controls_scroll.setSizePolicy(
+            QSizePolicy.Preferred,
+            QSizePolicy.Ignored,
+        )
+        controls_scroll.setMinimumHeight(0)
+        controls_scroll.setWidget(controls_panel)
+        controls_layout.addWidget(controls_scroll, 1)
+
+        actions = QHBoxLayout()
+        self.start_button = QPushButton()
+        self.start_button.setObjectName("Primary")
+        self.stop_button = QPushButton()
+        self.stop_button.setObjectName("Stop")
+        self.stop_button.setEnabled(False)
+        actions.addWidget(self.start_button, 2)
+        actions.addWidget(self.stop_button, 1)
+        controls_layout.addLayout(actions)
         monitor = self._build_monitor_area()
         splitter.addWidget(controls)
         splitter.addWidget(monitor)
@@ -245,7 +289,7 @@ class MainWindow(QMainWindow):
         panel = QWidget()
         panel.setMaximumWidth(430)
         layout = QVBoxLayout(panel)
-        layout.setContentsMargins(0, 0, 8, 0)
+        layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(10)
 
         self.devices_group = QGroupBox()
@@ -254,7 +298,9 @@ class MainWindow(QMainWindow):
         self.multi_device_mode.setChecked(False)
         devices_layout.addWidget(self.multi_device_mode)
         self.device_list = QListWidget()
-        self.device_list.setMinimumHeight(140)
+        # Two rows are sufficient for the supported one/two-device modes;
+        # extra discovered devices remain scrollable inside this list.
+        self.device_list.setFixedHeight(80)
         devices_layout.addWidget(self.device_list)
         self.discovery_label = QLabel()
         self.discovery_label.setObjectName("Muted")
@@ -275,34 +321,56 @@ class MainWindow(QMainWindow):
 
         self.webhook_group = QGroupBox()
         webhook_layout = QVBoxLayout(self.webhook_group)
+        self.webhook_label = QLabel()
         self.webhook_edit = QLineEdit(self.config.webhook_url)
         self.webhook_edit.setEchoMode(QLineEdit.Password)
-        self.webhook_edit.setPlaceholderText("Discord Webhook URL")
+        self.webhook_edit.setAccessibleName("")
+        self.webhook_edit.setToolTip("")
+        self.webhook_edit.setPlaceholderText("")
+        self.webhook_status = QLabel()
+        self.webhook_status.setObjectName("Muted")
+        self.discord_notifications = QCheckBox()
+        self.discord_notifications.setChecked(
+            self.config.features.discord_notifications_enabled
+        )
         self.test_button = QPushButton()
+        self.clear_webhook_button = QPushButton()
+        webhook_layout.addWidget(self.webhook_label)
         webhook_layout.addWidget(self.webhook_edit)
-        webhook_layout.addWidget(self.test_button)
+        webhook_layout.addWidget(self.webhook_status)
+        webhook_layout.addWidget(self.discord_notifications)
+        webhook_buttons = QHBoxLayout()
+        webhook_buttons.addWidget(self.test_button)
+        webhook_buttons.addWidget(self.clear_webhook_button)
+        webhook_layout.addLayout(webhook_buttons)
         layout.addWidget(self.webhook_group)
 
         self.protocol_group = QGroupBox()
         protocol_layout = QVBoxLayout(self.protocol_group)
         self.auto_click = QCheckBox()
         self.auto_click.setChecked(self.config.monitor.automation_enabled)
+        self.task_monitoring = QCheckBox()
+        self.task_monitoring.setChecked(
+            self.config.features.task_monitoring_enabled
+        )
+        self.equipment_automation = QCheckBox()
+        self.equipment_automation.setChecked(
+            self.config.features.equipment_automation_enabled
+        )
+        self.food_prompt_automation = QCheckBox()
+        self.food_prompt_automation.setChecked(
+            self.config.features.food_prompt_automation_enabled
+        )
         protocol_layout.addWidget(self.auto_click)
+        protocol_layout.addWidget(self.task_monitoring)
+        protocol_layout.addWidget(self.equipment_automation)
+        protocol_layout.addWidget(self.food_prompt_automation)
         self.protocol_text = QLabel()
         self.protocol_text.setObjectName("Muted")
         self.protocol_text.setWordWrap(True)
         protocol_layout.addWidget(self.protocol_text)
         layout.addWidget(self.protocol_group)
 
-        actions = QHBoxLayout()
-        self.start_button = QPushButton()
-        self.start_button.setObjectName("Primary")
-        self.stop_button = QPushButton()
-        self.stop_button.setObjectName("Stop")
-        self.stop_button.setEnabled(False)
-        actions.addWidget(self.start_button, 2)
-        actions.addWidget(self.stop_button, 1)
-        layout.addLayout(actions)
         layout.addStretch()
         return panel
 
@@ -339,10 +407,31 @@ class MainWindow(QMainWindow):
         self.connect_button.clicked.connect(self.connect_address)
         self.address_edit.returnPressed.connect(self.connect_address)
         self.test_button.clicked.connect(self.test_discord)
+        self.clear_webhook_button.clicked.connect(self.clear_webhook)
+        self.webhook_edit.textChanged.connect(self.update_webhook_status)
+        self.webhook_edit.editingFinished.connect(self.commit_webhook_edit)
         self.start_button.clicked.connect(self.start_monitoring)
         self.stop_button.clicked.connect(self.stop_monitoring)
-        self.auto_click.toggled.connect(
-            self.controller.set_automation_enabled
+        self.auto_click.toggled.connect(self.on_automation_enabled_changed)
+        self.task_monitoring.toggled.connect(
+            lambda enabled: self.on_feature_changed(
+                "task_monitoring_enabled", enabled
+            )
+        )
+        self.equipment_automation.toggled.connect(
+            lambda enabled: self.on_feature_changed(
+                "equipment_automation_enabled", enabled
+            )
+        )
+        self.food_prompt_automation.toggled.connect(
+            lambda enabled: self.on_feature_changed(
+                "food_prompt_automation_enabled", enabled
+            )
+        )
+        self.discord_notifications.toggled.connect(
+            lambda enabled: self.on_feature_changed(
+                "discord_notifications_enabled", enabled
+            )
         )
         self.bus.log.connect(self.append_log)
         self.bus.frame.connect(self.on_frame)
@@ -359,10 +448,21 @@ class MainWindow(QMainWindow):
         self.refresh_button.setText(self.tr("devices.refresh"))
         self.connect_button.setText(self.tr("devices.connect"))
         self.webhook_group.setTitle(self.tr("group.discord"))
+        webhook_label = self.tr("webhook.label")
+        self.webhook_label.setText(webhook_label)
+        self.webhook_edit.setAccessibleName(webhook_label)
+        self.webhook_edit.setToolTip(webhook_label)
         self.test_button.setText(self.tr("discord.test"))
+        self.clear_webhook_button.setText(self.tr("discord.clear"))
+        self.webhook_edit.setPlaceholderText(self.tr("webhook.placeholder"))
         self.protocol_group.setTitle(self.tr("group.protocol"))
-        self.auto_click.setText(self.tr("automation.enable"))
-        self.protocol_text.setText(self.tr("protocol.text"))
+        self.auto_click.setText(self.tr("automation.master"))
+        self.task_monitoring.setText(self.tr("automation.task"))
+        self.equipment_automation.setText(self.tr("automation.equipment"))
+        self.food_prompt_automation.setText(self.tr("automation.food"))
+        self.discord_notifications.setText(self.tr("automation.discord"))
+        self.protocol_text.setText(self.tr("automation.hint"))
+        self.update_webhook_status()
         self.start_button.setText(self.tr("action.start"))
         self.stop_button.setText(self.tr("action.stop"))
         self.preview_group.setTitle(
@@ -396,6 +496,73 @@ class MainWindow(QMainWindow):
                 language=self.language_combo.currentText(),
             ),
         )
+
+    @Slot(bool)
+    def on_automation_enabled_changed(self, enabled: bool) -> None:
+        self.controller.set_automation_enabled(enabled)
+        save_monitor_preferences(
+            self.config.project_dir,
+            self.config.monitor,
+            self.config.features,
+        )
+
+    def on_feature_changed(self, name: str, enabled: bool) -> None:
+        self.controller.set_feature_enabled(name, enabled)
+        save_monitor_preferences(
+            self.config.project_dir,
+            self.config.monitor,
+            self.config.features,
+        )
+        self.update_webhook_status()
+
+    @Slot()
+    @Slot(str)
+    def update_webhook_status(self, _text: str = "") -> None:
+        key = webhook_status_key(
+            self.webhook_edit.text(),
+            self.discord_notifications.isChecked(),
+        )
+        self.webhook_status.setText(self.tr(key))
+        self.test_button.setEnabled(key not in {
+            "discord.status.missing",
+            "discord.status.invalid",
+        })
+        self.clear_webhook_button.setEnabled(
+            bool(self.webhook_edit.text().strip())
+        )
+        if key in {"discord.status.missing", "discord.status.invalid"}:
+            # Do not let a temporary invalid edit keep sending to an old URL.
+            self.notifier.set_webhook("")
+
+    def _save_valid_webhook(self) -> bool:
+        webhook = self.webhook_edit.text().strip()
+        status = webhook_status_key(
+            webhook, self.discord_notifications.isChecked()
+        )
+        if status == "discord.status.invalid":
+            self.notifier.set_webhook("")
+            self.update_webhook_status()
+            return False
+        self.notifier.set_webhook(webhook)
+        self.config.webhook_url = webhook
+        save_webhook(self.config.project_dir, webhook)
+        return True
+
+    @Slot()
+    def commit_webhook_edit(self) -> None:
+        webhook = self.webhook_edit.text().strip()
+        if not webhook:
+            self.clear_webhook()
+        else:
+            self._save_valid_webhook()
+
+    @Slot()
+    def clear_webhook(self) -> None:
+        self.webhook_edit.clear()
+        self.notifier.set_webhook("")
+        self.config.webhook_url = ""
+        save_webhook(self.config.project_dir, "")
+        self.update_webhook_status()
 
     @Slot()
     def refresh_devices(self) -> None:
@@ -608,10 +775,7 @@ class MainWindow(QMainWindow):
                 self.tr("dialog.max_two_body"),
             )
             return
-        webhook = self.webhook_edit.text().strip()
-        self.notifier.set_webhook(webhook)
-        if webhook:
-            save_webhook(self.config.project_dir, webhook)
+        self._save_valid_webhook()
         for card in self.preview_cards:
             card.clear()
         for card, device in zip(self.preview_cards, devices[:2]):
@@ -653,11 +817,10 @@ class MainWindow(QMainWindow):
 
     @Slot()
     def test_discord(self) -> None:
-        webhook = self.webhook_edit.text().strip()
-        self.notifier.set_webhook(webhook)
-        if webhook:
-            save_webhook(self.config.project_dir, webhook)
+        if not self._save_valid_webhook():
+            return
         self.test_button.setEnabled(False)
+        self.webhook_status.setText(self.tr("discord.testing"))
 
         def send() -> None:
             try:
@@ -673,7 +836,7 @@ class MainWindow(QMainWindow):
 
     @Slot(bool, str)
     def on_discord_test(self, success: bool, message: str) -> None:
-        self.test_button.setEnabled(True)
+        self.update_webhook_status()
         if success:
             self.append_log("info", f"[DISCORD] {message}")
         else:

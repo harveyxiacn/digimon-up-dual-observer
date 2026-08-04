@@ -1,5 +1,5 @@
 from digimon_monitor.adb import AdbDevice
-from digimon_monitor.ui import normalized_selected_serials
+from digimon_monitor.ui import normalized_selected_serials, webhook_status_key
 
 
 def _emulator(serial: str, state: str = "device") -> AdbDevice:
@@ -55,3 +55,12 @@ def test_offline_selection_falls_back_to_online_emulator() -> None:
         {"127.0.0.1:5565"},
         allow_multiple=True,
     ) == ["emulator-5554"]
+
+
+def test_webhook_status_is_display_only_and_respects_discord_pause() -> None:
+    webhook = "https://discord.com/api/webhooks/123456789/token"
+
+    assert webhook_status_key("", True) == "discord.status.missing"
+    assert webhook_status_key("https://example.com/hook", True) == "discord.status.invalid"
+    assert webhook_status_key(webhook, False) == "discord.status.paused"
+    assert webhook_status_key(webhook, True) == "discord.status.ready"
